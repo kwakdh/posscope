@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>장비 연동 설정</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --color-background-primary: #ffffff;
+      --color-background-secondary: #f5f6f7;
+      --color-background-tertiary: #f0f1f3;
+      --color-text-primary: #111318;
+      --color-text-secondary: #5a5f6b;
+      --color-text-tertiary: #9199a8;
+      --color-border-tertiary: #e3e5e9;
+      --color-border-secondary: #cdd0d6;
+      --border-radius-lg: 12px;
+      --border-radius-md: 8px;
+      --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: #e8e9ed;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 24px 16px;
+    }
+
+    .root {
+      background: var(--color-background-tertiary);
+      width: 100%;
+      max-width: 480px;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+    }
+
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 13px 16px;
+      background: var(--color-background-primary);
+      border-bottom: 0.5px solid var(--color-border-tertiary);
+    }
+    .tb-back {
+      display: flex; align-items: center; gap: 3px;
+      font-size: 13px; color: #185FA5; cursor: pointer;
+    }
+    .tb-title { font-size: 15px; font-weight: 500; color: var(--color-text-primary); }
+
+    /* 탭 바 */
+    .tab-bar {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      background: var(--color-background-primary);
+      border-bottom: 1px solid var(--color-border-tertiary);
+      padding: 8px 12px 0; gap: 6px;
+    }
+    .tab-btn {
+      padding: 10px 4px;
+      font-size: 12px; font-weight: 500;
+      border: none; background: none; cursor: pointer;
+      color: var(--color-text-tertiary);
+      border-bottom: 2px solid transparent;
+      border-radius: 8px 8px 0 0;
+      transition: all 0.15s;
+      display: flex; flex-direction: column; align-items: center; gap: 5px;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .tab-btn:hover { background: var(--color-background-secondary); }
+    .tab-btn.on { color: #185FA5; background: #EBF4FF; border-bottom: 2px solid #185FA5; }
+    .tab-icon {
+      width: 28px; height: 28px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; pointer-events: none; transition: all 0.15s;
+    }
+    .ti-blue  { background: #E6F1FB; color: #185FA5; }
+    .ti-teal  { background: #E1F5EE; color: #0F6E56; }
+    .ti-orange{ background: #FEF0E6; color: #B85C00; }
+    .tab-btn.on .ti-blue  { background: #185FA5; color: #fff; box-shadow: 0 2px 8px rgba(24,95,165,0.35); }
+    .tab-btn.on .ti-teal  { background: #0F6E56; color: #fff; }
+    .tab-btn.on .ti-orange{ background: #B85C00; color: #fff; }
+    .tab-label { pointer-events: none; font-size: 11px; font-weight: 500; }
+
+    .tab-panel { display: none; }
+    .tab-panel.on { display: block; }
+
+    /* 스텝 */
+    .steps { padding: 16px; display: flex; flex-direction: column; }
+    .step-row { display: flex; gap: 12px; }
+    .step-left { display: flex; flex-direction: column; align-items: center; width: 24px; flex-shrink: 0; }
+    .step-num {
+      width: 24px; height: 24px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 600; flex-shrink: 0;
+    }
+    .sn-done   { background: #185FA5; color: #fff; }
+    .sn-active { background: #185FA5; color: #fff; }
+    .step-line { flex: 1; width: 1px; background: var(--color-border-tertiary); margin: 4px 0; }
+    .step-content { flex: 1; padding-bottom: 16px; }
+    .step-title { font-size: 12px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 8px; margin-top: 1px; }
+
+    /* 기기 선택 */
+    .pick-list { border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); overflow: hidden; background: var(--color-background-primary); }
+    .pick-row  { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 0.5px solid var(--color-border-tertiary); cursor: pointer; transition: background 0.12s; }
+    .pick-row:last-child { border-bottom: none; }
+    .pick-row:hover { background: var(--color-background-secondary); }
+    .pick-row.sel { background: #EBF4FF; }
+    .pr-left  { display: flex; align-items: center; gap: 10px; }
+    .pr-icon  { width: 28px; height: 28px; border-radius: var(--border-radius-md); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+    .ic-b { background: #E6F1FB; color: #185FA5; }
+    .ic-p { background: #EEEDFE; color: #534AB7; }
+    .pick-row.sel .ic-b { background: #185FA5; color: #fff; }
+    .pr-title { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+    .pick-row.sel .pr-title { color: #0C447C; }
+    .pr-sub   { font-size: 11px; color: var(--color-text-secondary); margin-top: 1px; }
+    .radio-p  { width: 17px; height: 17px; border-radius: 50%; border: 1.5px solid var(--color-border-secondary); flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: border-color 0.15s; }
+    .pick-row.sel .radio-p { border-color: #185FA5; }
+    .radio-p::after { content: ''; width: 9px; height: 9px; border-radius: 50%; background: #185FA5; display: none; }
+    .pick-row.sel .radio-p::after { display: block; }
+    .setup-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 600; color: #0F6E56; white-space: nowrap; }
+    .setup-badge i { font-size: 13px; }
+    .pr-title-row { display: flex; align-items: center; gap: 5px; }
+    .cr-title-row { display: flex; align-items: center; gap: 5px; }
+
+    /* 연결 방식 */
+    .conn-list { border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); overflow: hidden; background: var(--color-background-primary); }
+    .conn-row  { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 0.5px solid var(--color-border-tertiary); cursor: pointer; transition: background 0.12s; }
+    .conn-row:last-child { border-bottom: none; }
+    .conn-row:hover { background: var(--color-background-secondary); }
+    .conn-row.sel { background: #EBF4FF; }
+    .cr-left  { display: flex; align-items: center; gap: 10px; }
+    .cr-icon  { width: 28px; height: 28px; border-radius: var(--border-radius-md); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; background: var(--color-background-secondary); color: var(--color-text-secondary); }
+    .conn-row.sel .cr-icon { background: #E6F1FB; color: #185FA5; }
+    .cr-title { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+    .conn-row.sel .cr-title { color: #0C447C; }
+    .cr-sub   { font-size: 11px; color: var(--color-text-secondary); margin-top: 1px; }
+    .radio-c  { width: 17px; height: 17px; border-radius: 50%; border: 1.5px solid var(--color-border-secondary); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    .conn-row.sel .radio-c { border-color: #185FA5; }
+    .radio-c::after { content: ''; width: 9px; height: 9px; border-radius: 50%; background: #185FA5; display: none; }
+    .conn-row.sel .radio-c::after { display: block; }
+
+    /* 폼 */
+    .form-block { border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); overflow: hidden; background: var(--color-background-primary); }
+    .frow { display: flex; align-items: center; justify-content: space-between; padding: 11px 13px; border-bottom: 0.5px solid var(--color-border-tertiary); gap: 8px; }
+    .frow:last-child { border-bottom: none; }
+    .fl   { font-size: 12px; color: var(--color-text-secondary); flex-shrink: 0; min-width: 80px; }
+    .fv   { font-size: 12px; color: var(--color-text-primary); text-align: right; }
+    .fv-ok{ font-size: 12px; color: #0F6E56; font-weight: 500; }
+    .sel-w{ flex: 1; margin-left: 8px; position: relative; }
+    .sel-w select { width: 100%; padding: 8px 28px 8px 10px; font-size: 12px; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); background: var(--color-background-secondary); color: var(--color-text-primary); appearance: none; }
+    .sel-w select:disabled { color: var(--color-text-tertiary); background: var(--color-background-tertiary); cursor: not-allowed; }
+    .sel-w select:disabled + i { opacity: 0.4; }
+    .sel-w i { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 11px; color: var(--color-text-tertiary); pointer-events: none; }
+    .finput { flex: 1; margin-left: 8px; padding: 8px 10px; font-size: 12px; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); background: var(--color-background-secondary); color: var(--color-text-primary); min-width: 0; }
+    .frow-action { display: flex; align-items: center; padding: 11px 13px; border-bottom: 0.5px solid var(--color-border-tertiary); gap: 8px; }
+    .frow-action:last-child { border-bottom: none; }
+    .iabtn      { padding: 7px 12px; font-size: 12px; border-radius: var(--border-radius-md); cursor: pointer; font-weight: 500; white-space: nowrap; }
+    .iabtn-dark { background: #1e1e1e; border: none; color: #fff; }
+    .iabtn-out  { background: var(--color-background-primary); border: 0.5px solid var(--color-border-secondary); color: var(--color-text-primary); }
+
+    .info-bar { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--color-text-tertiary); margin-bottom: 10px; }
+    .help { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #185FA5; cursor: pointer; margin-top: 10px; text-decoration: underline; text-underline-offset: 2px; }
+    .abtn-row { margin-top: 10px; display: flex; gap: 8px; }
+    .abtn { flex: 1; padding: 12px; border-radius: var(--border-radius-lg); font-size: 13px; font-weight: 500; cursor: pointer; text-align: center; }
+    .abtn-primary{ background: #185FA5; border: none; color: #fff; }
+    .abtn-out2   { background: var(--color-background-primary); border: 0.5px solid var(--color-border-secondary); color: var(--color-text-primary); }
+    .abtn-danger { background: var(--color-background-primary); border: 0.5px solid #E24B4A; color: #A32D2D; }
+    .connect-btn { width: 100%; margin-top: 16px; padding: 13px; border-radius: var(--border-radius-lg); font-size: 13px; font-weight: 500; cursor: pointer; border: none; background: #185FA5; color: #fff; }
+    .connect-btn:disabled { background: var(--color-background-tertiary); color: var(--color-text-tertiary); cursor: not-allowed; }
+    .finput:disabled { color: var(--color-text-tertiary); background: var(--color-background-tertiary); cursor: not-allowed; }
+    .fv-err { font-size: 12px; color: #C0392B; font-weight: 600; }
+    .quick-connect-btn { font-size: 12px; font-weight: 500; color: #185FA5; background: none; border: none; cursor: pointer; padding: 0; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+
+    .tog-block { border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); overflow: hidden; background: var(--color-background-primary); }
+    .trow { display: flex; align-items: center; justify-content: space-between; padding: 13px; border-bottom: 0.5px solid var(--color-border-tertiary); gap: 12px; }
+    .trow:last-child { border-bottom: none; }
+    .tt { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+    .tog { width: 40px; height: 22px; border-radius: 11px; background: var(--color-border-secondary); position: relative; cursor: pointer; flex-shrink: 0; transition: background 0.2s; }
+    .tog.on { background: #185FA5; }
+    .tog::after { content: ''; position: absolute; width: 18px; height: 18px; border-radius: 50%; background: #fff; top: 2px; left: 2px; transition: left 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
+    .tog.on::after { left: 20px; }
+  </style>
+</head>
+<body>
+<div class="root">
+  <div class="topbar">
+    <div class="tb-back"><i class="ti ti-chevron-left" style="font-size:15px"></i> 뒤로</div>
+    <span class="tb-title">장비 연동 설정</span>
+    <div style="width:44px"></div>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab-btn on" id="tab-payment" onclick="switchTab('payment')">
+      <div class="tab-icon ti-blue"><i class="ti ti-credit-card"></i></div>
+      <span class="tab-label">결제 기기</span>
+    </button>
+    <button class="tab-btn" id="tab-printer" onclick="switchTab('printer')">
+      <div class="tab-icon ti-teal"><i class="ti ti-printer"></i></div>
+      <span class="tab-label">프린터</span>
+    </button>
+    <button class="tab-btn" id="tab-barcode" onclick="switchTab('barcode')">
+      <div class="tab-icon ti-orange"><i class="ti ti-barcode"></i></div>
+      <span class="tab-label">바코드 스캐너</span>
+    </button>
+  </div>
+
+  <!-- ── 결제 기기 ── -->
+  <div class="tab-panel on" id="panel-payment">
+    <div class="steps">
+
+      <div class="step-row">
+        <div class="step-left"><div class="step-num sn-done">1</div><div class="step-line"></div></div>
+        <div class="step-content">
+          <div class="step-title">결제 기기 선택</div>
+          <div class="pick-list">
+            <div class="pick-row sel" id="pick-terminal" onclick="selectDevice('terminal')">
+              <div class="pr-left">
+                <div class="pr-icon ic-b"><i class="ti ti-credit-card"></i></div>
+                <div>
+                  <div class="pr-title-row">
+                    <span class="pr-title">카드 단말기</span>
+                    <div class="setup-badge"><i class="ti ti-circle-check-filled"></i>설정됨</div>
+                  </div>
+                  <div class="pr-sub">케이블 · 네트워크</div>
+                </div>
+              </div>
+              <div class="radio-p"></div>
+            </div>
+            <div class="pick-row" id="pick-reader" onclick="selectDevice('reader')">
+              <div class="pr-left">
+                <div class="pr-icon ic-p"><i class="ti ti-scan"></i></div>
+                <div>
+                  <div class="pr-title-row"><span class="pr-title">카드 리더기</span></div>
+                  <div class="pr-sub">블루투스 · 케이블</div>
+                </div>
+              </div>
+              <div class="radio-p"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div class="step-left"><div class="step-num sn-active">2</div><div class="step-line"></div></div>
+        <div class="step-content">
+          <div class="step-title">연결 방식 선택</div>
+          <div id="conn-terminal">
+            <div class="conn-list">
+              <div class="conn-row sel" id="conn-tcable" onclick="selectConn('tcable')">
+                <div class="cr-left">
+                  <div class="cr-icon"><i class="ti ti-plug"></i></div>
+                  <div>
+                    <div class="cr-title-row">
+                      <span class="cr-title">케이블</span>
+                      <div class="setup-badge"><i class="ti ti-circle-check-filled"></i>설정됨</div>
+                    </div>
+                    <div class="cr-sub">시리얼 COM 포트</div>
+                  </div>
+                </div>
+                <div class="radio-c"></div>
+              </div>
+              <div class="conn-row" id="conn-tnetwork" onclick="selectConn('tnetwork')">
+                <div class="cr-left">
+                  <div class="cr-icon"><i class="ti ti-network"></i></div>
+                  <div>
+                    <div class="cr-title-row"><span class="cr-title">네트워크</span></div>
+                    <div class="cr-sub">TCP/IP</div>
+                  </div>
+                </div>
+                <div class="radio-c"></div>
+              </div>
+            </div>
+          </div>
+          <div id="conn-reader" style="display:none">
+            <div class="conn-list">
+              <div class="conn-row sel" id="conn-rbt" onclick="selectConn('rbt')">
+                <div class="cr-left"><div class="cr-icon"><i class="ti ti-bluetooth"></i></div><div><div class="cr-title">블루투스</div><div class="cr-sub">Bluetooth 페어링</div></div></div>
+                <div class="radio-c"></div>
+              </div>
+              <div class="conn-row" id="conn-rcable" onclick="selectConn('rcable')">
+                <div class="cr-left"><div class="cr-icon"><i class="ti ti-plug"></i></div><div><div class="cr-title">케이블</div><div class="cr-sub">시리얼 COM 포트</div></div></div>
+                <div class="radio-c"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div class="step-left"><div class="step-num sn-active">3</div></div>
+        <div class="step-content">
+          <div class="step-title">상세 설정</div>
+
+          <!-- 단말기 케이블 -->
+          <div id="detail-tcable">
+            <div class="info-bar"><i class="ti ti-info-circle"></i> 현재 장비는 이미지 출력 기능을 제공하지 않습니다.</div>
+            <div class="form-block">
+              <div class="frow"><span class="fl">단말기 포트</span><div class="sel-w"><select disabled><option>COM 2</option><option>COM 1</option><option>COM 3</option></select><i class="ti ti-chevron-down"></i></div></div>
+              <div class="frow"><span class="fl">단말기 속도</span><div class="sel-w"><select disabled><option>14400</option><option>9600</option><option>38400</option></select><i class="ti ti-chevron-down"></i></div></div>
+              <div class="frow"><span class="fl">버전</span><span class="fv">1101</span></div>
+              <div class="frow"><span class="fl">VAN</span><span class="fv">NHN KCP</span></div>
+              <div class="frow"><span class="fl">TID</span><span class="fv">202205021</span></div>
+            </div>
+            <div class="help"><i class="ti ti-help-circle" style="font-size:14px"></i> 도움말 확인하기</div>
+            <div class="abtn-row"><button class="abtn abtn-danger" onclick="resetTerminal()">단말기 정보 삭제</button></div>
+          </div>
+
+          <!-- 단말기 네트워크 -->
+          <div id="detail-tnetwork" style="display:none">
+            <div class="form-block">
+              <div class="frow"><span class="fl">IP 주소</span><input class="finput" placeholder="IP를 입력해 주세요."></div>
+              <div class="frow"><span class="fl">버전</span><span class="fv">-</span></div>
+              <div class="frow"><span class="fl">VAN</span><span class="fv">-</span></div>
+              <div class="frow"><span class="fl">TID</span><span class="fv">-</span></div>
+              <div class="frow"><span class="fl">최근 연결 IP</span><div style="display:flex;align-items:center;gap:8px;justify-content:flex-end"><span class="fv">192.168.50.00</span><button class="quick-connect-btn">바로연결</button></div></div>
+            </div>
+            <div class="help"><i class="ti ti-help-circle" style="font-size:14px"></i> 도움말 확인하기</div>
+            <button class="connect-btn" disabled>단말기 연결</button>
+          </div>
+
+          <!-- 리더기 블루투스 -->
+          <div id="detail-rbt" style="display:none">
+            <div class="form-block">
+              <div class="frow"><span class="fl">모델 정보</span><input class="finput" placeholder="모델 정보를 입력하세요."></div>
+              <div class="frow"><span class="fl">일련 번호</span><input class="finput" placeholder="일련번호를 입력하세요."></div>
+              <div class="frow"><span class="fl">기기 인증 식별번호</span><span class="fv" style="font-size:11px">CHERRYFORCE1001</span></div>
+              <div class="frow"><span class="fl">POS ID</span><span class="fv">-</span></div>
+              <div class="frow"><span class="fl">연결 상태</span><span class="fv-err">연결 안됨</span></div>
+              <div class="frow"><span class="fl">TID</span><span class="fv">-</span></div>
+              <div class="frow"><span class="fl">VAN</span><span class="fv">-</span></div>
+              <div class="frow"><span class="fl">버전</span><span class="fv">-</span></div>
+            </div>
+            <div class="help"><i class="ti ti-help-circle" style="font-size:14px"></i> 도움말 확인하기</div>
+            <button class="connect-btn">리더기 연결</button>
+          </div>
+
+          <!-- 리더기 케이블 -->
+          <div id="detail-rcable" style="display:none">
+            <div class="form-block">
+              <div class="frow"><span class="fl">단말기 포트</span><div class="sel-w"><select><option value="">포트 선택</option><option>KCP 440D POS PORT</option><option>COM 1</option><option>COM 2</option><option>COM 3</option></select><i class="ti ti-chevron-down"></i></div></div>
+              <div class="frow"><span class="fl">단말기 속도</span><div class="sel-w"><select><option>14400</option><option>9600</option><option>19200</option><option>38400</option><option>115200</option></select><i class="ti ti-chevron-down"></i></div></div>
+              <div class="frow"><span class="fl">기기 인증 식별번호</span><span class="fv" style="font-size:11px">CHERRYFORCE1001</span></div>
+              <div class="frow"><span class="fl">POS ID</span><span class="fv">194005LARPMEMIR</span></div>
+              <div class="frow"><span class="fl">버전</span><span class="fv">-</span></div>
+              <div class="frow"><span class="fl">VAN</span><span class="fv">-</span></div>
+              <div class="frow"><span class="fl">TID</span><span class="fv">-</span></div>
+            </div>
+            <div class="help"><i class="ti ti-help-circle" style="font-size:14px"></i> 도움말 확인하기</div>
+            <button class="connect-btn" disabled>리더기 연결</button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 프린터 ── -->
+  <div class="tab-panel" id="panel-printer">
+    <div class="steps">
+      <div class="step-row">
+        <div class="step-left"><div class="step-num sn-done">1</div><div class="step-line"></div></div>
+        <div class="step-content">
+          <div class="step-title">연결 방식 선택</div>
+          <div class="conn-list">
+            <div class="conn-row sel" id="pconn-serial" onclick="selectPrinterConn('serial')">
+              <div class="cr-left">
+                <div class="cr-icon"><i class="ti ti-plug"></i></div>
+                <div>
+                  <div class="cr-title-row">
+                    <span class="cr-title">케이블</span>
+                    <div class="setup-badge"><i class="ti ti-circle-check-filled"></i>설정됨</div>
+                  </div>
+                  <div class="cr-sub">시리얼 COM 포트</div>
+                </div>
+              </div>
+              <div class="radio-c"></div>
+            </div>
+            <div class="conn-row" id="pconn-network" onclick="selectPrinterConn('network')">
+              <div class="cr-left">
+                <div class="cr-icon"><i class="ti ti-network"></i></div>
+                <div>
+                  <div class="cr-title-row"><span class="cr-title">네트워크</span></div>
+                  <div class="cr-sub">TCP/IP</div>
+                </div>
+              </div>
+              <div class="radio-c"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="step-row">
+        <div class="step-left"><div class="step-num sn-active">2</div></div>
+        <div class="step-content">
+          <div class="step-title">상세 설정</div>
+          <div id="printer-serial">
+            <!-- 설정됨 상태 -->
+            <div id="printer-serial-setup">
+              <div class="form-block">
+                <div class="frow"><span class="fl">프린터 포트</span><input class="finput" value="COM1" disabled></div>
+                <div class="frow"><span class="fl">프린터 속도</span><input class="finput" value="14,000" disabled></div>
+              </div>
+              <div class="help"><i class="ti ti-help-circle" style="font-size:14px"></i> 도움말 확인하기</div>
+              <button class="connect-btn" onclick="resetPrinter()">프린터 정보 삭제</button>
+            </div>
+            <!-- 미연동 상태 -->
+            <div id="printer-serial-form" style="display:none">
+              <div class="form-block">
+                <div class="frow"><span class="fl">프린터 포트</span><div class="sel-w"><select><option value="">포트 선택</option><option>COM 1</option><option>COM 2</option><option>COM 3</option></select><i class="ti ti-chevron-down"></i></div></div>
+                <div class="frow"><span class="fl">프린터 속도</span><div class="sel-w"><select><option value="">속도 선택</option><option>9600</option><option>19200</option><option>38400</option><option>115200</option></select><i class="ti ti-chevron-down"></i></div></div>
+              </div>
+              <div class="help"><i class="ti ti-help-circle" style="font-size:14px"></i> 도움말 확인하기</div>
+              <button class="connect-btn">프린터 연결</button>
+            </div>
+          </div>
+          <div id="printer-network" style="display:none">
+            <div class="form-block">
+              <div class="frow"><span class="fl">IP 주소</span><input class="finput" placeholder="192.168.0.xxx"></div>
+            </div>
+            <div class="help"><i class="ti ti-help-circle" style="font-size:14px"></i> 도움말 확인하기</div>
+            <button class="connect-btn">프린터 연결</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 바코드 스캐너 ── -->
+  <div class="tab-panel" id="panel-barcode">
+    <div class="steps">
+      <div class="step-row">
+        <div class="step-left"><div class="step-num sn-done">1</div></div>
+        <div class="step-content">
+          <div class="step-title">바코드 스캐너 설정</div>
+          <div class="tog-block">
+            <div class="trow">
+              <div><div class="tt">바코드 스캐너 사용</div></div>
+              <div class="tog on" onclick="this.classList.toggle('on')"></div>
+            </div>
+          </div>
+          <div class="help"><i class="ti ti-help-circle" style="font-size:14px"></i> 도움말 확인하기</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  function switchTab(key) {
+    ['payment','printer','barcode'].forEach(function(k) {
+      document.getElementById('tab-'+k).classList[k===key?'add':'remove']('on');
+      document.getElementById('panel-'+k).classList[k===key?'add':'remove']('on');
+    });
+  }
+  function selectDevice(key) {
+    ['terminal','reader'].forEach(function(k) {
+      document.getElementById('pick-'+k).classList[k===key?'add':'remove']('sel');
+    });
+    document.getElementById('conn-terminal').style.display = key==='terminal'?'block':'none';
+    document.getElementById('conn-reader').style.display   = key==='reader'?'block':'none';
+    if (key==='terminal') { selectConn('tcable'); } else { selectConn('rbt'); }
+  }
+  function selectConn(key) {
+    ['tcable','tnetwork','rbt','rcable'].forEach(function(k) {
+      var el = document.getElementById('conn-'+k);
+      if (el) el.classList[k===key?'add':'remove']('sel');
+      var d = document.getElementById('detail-'+k);
+      if (d) d.style.display = k===key?'block':'none';
+    });
+  }
+  function resetPrinter() {
+    document.getElementById('printer-serial-setup').style.display = 'none';
+    document.getElementById('printer-serial-form').style.display = 'block';
+    var badge = document.querySelector('#pconn-serial .setup-badge');
+    if (badge) badge.remove();
+  }
+  function resetTerminal() {
+    document.querySelectorAll('#detail-tcable select').forEach(function(s) { s.disabled = false; });
+    var pickBadge = document.querySelector('#pick-terminal .setup-badge');
+    if (pickBadge) pickBadge.remove();
+    var connBadge = document.querySelector('#conn-tcable .setup-badge');
+    if (connBadge) connBadge.remove();
+  }
+  function selectPrinterConn(key) {
+    ['serial','network'].forEach(function(k) {
+      document.getElementById('pconn-'+k).classList[k===key?'add':'remove']('sel');
+      document.getElementById('printer-'+k).style.display = k===key?'block':'none';
+    });
+  }
+</script>
+</body>
+</html>
