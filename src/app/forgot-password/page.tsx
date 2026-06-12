@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { Logo } from "@/components/logo";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -33,7 +33,7 @@ export default function ForgotPasswordPage() {
   return (
     <div className="flex flex-1 items-center justify-center bg-zinc-50 px-4">
       <div className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
-        <Image src="/logo-wordmark.svg" alt="POSSCOPE" width={225} height={45} priority />
+        <Logo />
         <p className="mt-3 text-sm text-zinc-500">비밀번호 재설정 메일을 보내드립니다.</p>
 
         {sent ? (

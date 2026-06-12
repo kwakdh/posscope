@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { Logo } from "@/components/logo";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -35,7 +35,7 @@ export default function ResetPasswordPage() {
   return (
     <div className="flex flex-1 items-center justify-center bg-zinc-50 px-4">
       <div className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
-        <Image src="/logo-wordmark.svg" alt="POSSCOPE" width={225} height={45} priority />
+        <Logo />
         <p className="mt-3 text-sm text-zinc-500">새 비밀번호를 설정해주세요.</p>
 
         {done ? (

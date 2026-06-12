@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ADMIN_EMAILS } from "@/lib/supabase/middleware";
@@ -6,6 +5,7 @@ import { SignOutButton } from "@/components/sign-out-button";
 import { ProfileAvatar } from "@/components/profile-avatar";
 import { OnlineUsers } from "@/components/online-users";
 import { ProductTabs } from "@/components/product-tabs";
+import { Logo } from "@/components/logo";
 
 const PRODUCT_ORDER = ["pos-app", "berrypos", "partner"];
 
@@ -51,8 +51,8 @@ export default async function Home() {
 
   return (
     <div className="flex flex-1 flex-col bg-zinc-50">
-      <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-4">
-        <Image src="/logo-wordmark.svg" alt="POSSCOPE" width={225} height={45} priority />
+      <header className="flex items-center justify-between border-b border-zinc-200 bg-[#F3F3F3] px-6 py-2">
+        <Logo />
         <div className="flex items-center gap-4 text-sm text-zinc-600">
           <OnlineUsers
             userId={user!.id}

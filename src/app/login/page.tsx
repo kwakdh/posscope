@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { Logo } from "@/components/logo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -34,7 +34,7 @@ export default function LoginPage() {
   return (
     <div className="flex flex-1 items-center justify-center bg-zinc-50 px-4">
       <div className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
-        <Image src="/logo-wordmark.svg" alt="POSSCOPE" width={225} height={45} priority />
+        <Logo />
         <p className="mt-3 text-sm text-zinc-500">안녕하세요 POSSCOPE입니다.</p>
 
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
