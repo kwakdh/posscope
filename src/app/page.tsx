@@ -5,12 +5,9 @@ import { ADMIN_EMAILS } from "@/lib/supabase/middleware";
 import { SignOutButton } from "@/components/sign-out-button";
 import { ProfileAvatar } from "@/components/profile-avatar";
 import { OnlineUsers } from "@/components/online-users";
+import { ProductTabs } from "@/components/product-tabs";
 
-const TABS = [
-  { slug: "pos-app", label: "포스앱" },
-  { slug: "berrypos", label: "베리포스" },
-  { slug: "partner", label: "파트너" },
-];
+const PRODUCT_ORDER = ["pos-app", "berrypos", "partner"];
 
 export default async function Home() {
   const supabase = await createClient();
@@ -23,6 +20,34 @@ export default async function Home() {
     .single();
 
   const isAdmin = ADMIN_EMAILS.includes(user?.email ?? "") || profile?.role === "admin";
+
+  const { data: products } = await supabase
+    .from("products")
+    .select("id, name, slug, feature_categories(id, name, sort_order, features(id, name, status, sort_order))")
+    .order("slug");
+
+  const productsData = (products ?? [])
+    .slice()
+    .sort((a, b) => PRODUCT_ORDER.indexOf(a.slug) - PRODUCT_ORDER.indexOf(b.slug))
+    .map((product) => ({
+      slug: product.slug,
+      name: product.name,
+      categories: (product.feature_categories ?? [])
+        .slice()
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map((category) => ({
+          id: category.id,
+          name: category.name,
+          features: (category.features ?? [])
+            .slice()
+            .sort((a, b) => a.sort_order - b.sort_order)
+            .map((feature) => ({
+              id: feature.id,
+              name: feature.name,
+              status: feature.status as "draft" | "in_review" | "deployed",
+            })),
+        })),
+    }));
 
   return (
     <div className="flex flex-1 flex-col bg-zinc-50">
@@ -49,20 +74,7 @@ export default async function Home() {
         </div>
       </header>
 
-      <nav className="flex gap-1 border-b border-zinc-200 bg-white px-6">
-        {TABS.map((tab) => (
-          <button
-            key={tab.slug}
-            className="border-b-2 border-transparent px-4 py-3 text-sm font-medium text-zinc-500 hover:border-zinc-300 hover:text-zinc-900"
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
-
-      <main className="flex flex-1 items-center justify-center text-zinc-400">
-        기능 메뉴 리스트가 여기에 표시됩니다.
-      </main>
+      <ProductTabs products={productsData} />
     </div>
   );
 }
