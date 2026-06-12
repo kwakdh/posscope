@@ -1,13 +1,27 @@
 -- POSSCOPE 초기 스키마
 -- Supabase SQL Editor에서 실행
+-- 주의: 이미 users 테이블이 생성된 DB라면 이 파일 대신 supabase/migrations/ 의 마이그레이션을 실행할 것
 
 -- 사용자 (Auth 연동)
 create table users (
   id uuid primary key references auth.users(id) on delete cascade,
+  email text not null unique,
   name text not null,
-  role text not null check (role in ('planner', 'developer', 'viewer')),
+  role text not null check (role in ('admin', 'planner', 'developer', 'viewer')),
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
   created_at timestamptz not null default now()
 );
+
+-- RLS: 본인 row 조회/수정 + admin 전체 조회
+alter table users enable row level security;
+
+create policy "users can view own row"
+  on users for select
+  using (auth.uid() = id);
+
+create policy "service role manages users"
+  on users for all
+  using (auth.role() = 'service_role');
 
 -- 제품 (포스앱 / 베리포스 / 파트너)
 create table products (
