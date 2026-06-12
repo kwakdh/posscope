@@ -9,25 +9,26 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f4f6fa; color: #1a202c; font-size: 14px; }
 
-/* ── 레이아웃 ── */
 .layout { display: flex; height: 100vh; overflow: hidden; }
 
-/* ── 사이드바 ── */
-.sidebar { width: 200px; min-width: 200px; background: #1a2236; display: flex; flex-direction: column; overflow-y: auto; }
-.sidebar-logo { padding: 16px 14px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(255,255,255,0.08); }
-.logo-box { width: 30px; height: 30px; background: #3b82f6; border-radius: 7px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.logo-box i { color: #fff; font-size: 17px; }
+.sidebar { width: 210px; min-width: 210px; background: #1a2236; display: flex; flex-direction: column; overflow-y: auto; }
+.sidebar-logo { padding: 16px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.logo-box { width: 32px; height: 32px; background: #1976d2; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.logo-box i { color: #fff; font-size: 18px; }
 .sidebar-logo span { color: #fff; font-size: 12px; font-weight: 500; line-height: 1.3; }
+.nav-item { display: flex; align-items: center; gap: 12px; padding: 13px 16px; color: rgba(255,255,255,0.6); font-size: 13px; cursor: pointer; transition: background 0.15s, color 0.15s; border-left: 3px solid transparent; min-height: 48px; }
+.nav-item i { font-size: 20px; flex-shrink: 0; }
+.nav-item:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.9); }
+.nav-item.active { background: #1565c0; color: #fff; border-left-color: transparent; }
+.nav-item .arrow { margin-left: auto; font-size: 14px; transition: transform 0.2s; }
+.nav-item.open .arrow { transform: rotate(180deg); }
+.nav-sub { overflow: hidden; max-height: 0; transition: max-height 0.25s ease; }
+.nav-sub.open { max-height: 300px; }
+.nav-sub-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px 10px 44px; color: rgba(255,255,255,0.45); font-size: 12px; cursor: pointer; transition: background 0.15s, color 0.15s; border-left: 3px solid transparent; }
+.nav-sub-item:hover { background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.85); }
+.nav-sub-item.active { background: #1565c0; color: #fff; border-left-color: transparent; }
 
-.nav-item { display: flex; align-items: center; gap: 9px; padding: 10px 14px; color: rgba(255,255,255,0.5); font-size: 13px; cursor: pointer; transition: background 0.15s, color 0.15s; border-left: 3px solid transparent; }
-.nav-item i { font-size: 17px; flex-shrink: 0; }
-.nav-item:hover { background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.8); }
-.nav-item.active { background: rgba(59,130,246,0.15); color: #60a5fa; border-left-color: #3b82f6; }
-.nav-item .arrow { margin-left: auto; font-size: 13px; }
-
-/* ── 본문 ── */
 .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-
 .topbar { background: #fff; border-bottom: 1px solid #e8ecf0; padding: 0 24px; height: 54px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
 .topbar-left { display: flex; align-items: center; gap: 10px; }
 .topbar-left i { font-size: 20px; color: #6b7280; cursor: pointer; }
@@ -36,10 +37,9 @@ body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI',
 .topbar-right i { font-size: 17px; }
 .logout-btn { margin-left: 8px; cursor: pointer; color: #9ca3af; }
 .logout-btn:hover { color: #ef4444; }
-
 .content { padding: 20px 24px; overflow-y: auto; flex: 1; }
 
-/* ── 필터 카드 ── */
+/* 필터 */
 .filter-card { background: #fff; border-radius: 10px; border: 1px solid #e8ecf0; padding: 16px 20px; margin-bottom: 16px; }
 .filter-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .filter-date { display: flex; align-items: center; gap: 6px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 12px; font-size: 12px; color: #6b7280; cursor: pointer; background: #fff; transition: border-color 0.15s; }
@@ -52,27 +52,31 @@ body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI',
 .filter-row2 { display: flex; align-items: flex-end; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
 .select-wrap { display: flex; flex-direction: column; gap: 3px; }
 .select-label { font-size: 11px; color: #9ca3af; }
-.select-box { display: flex; align-items: center; gap: 4px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 10px; font-size: 12px; color: #374151; min-width: 110px; justify-content: space-between; cursor: pointer; background: #fff; transition: border-color 0.15s; }
+.select-box { display: flex; align-items: center; gap: 4px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 10px; font-size: 12px; color: #374151; min-width: 120px; justify-content: space-between; cursor: pointer; background: #fff; transition: border-color 0.15s; user-select: none; }
 .select-box:hover { border-color: #3b82f6; }
-.select-box i { font-size: 13px; color: #9ca3af; }
+.select-box.open { border-color: #3b82f6; }
+.select-box i { font-size: 13px; color: #9ca3af; flex-shrink: 0; }
 .search-btn { margin-left: auto; background: #3b82f6; color: #fff; border: none; border-radius: 8px; padding: 7px 20px; font-size: 13px; cursor: pointer; transition: background 0.15s; }
 .search-btn:hover { background: #2563eb; }
 
-/* ── 테이블 카드 ── */
+/* 테이블 */
 .table-card { background: #fff; border-radius: 10px; border: 1px solid #e8ecf0; overflow: hidden; }
 .table-header { display: flex; align-items: center; justify-content: flex-end; padding: 12px 16px; border-bottom: 1px solid #e8ecf0; }
 .reg-btn { background: #3b82f6; color: #fff; border: none; border-radius: 8px; padding: 7px 16px; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: background 0.15s; }
 .reg-btn:hover { background: #2563eb; }
 .reg-btn i { font-size: 15px; }
-
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th { padding: 10px 14px; text-align: left; color: #6b7280; font-weight: 500; border-bottom: 1px solid #e8ecf0; background: #f8fafc; font-size: 12px; white-space: nowrap; }
-td { padding: 12px 14px; border-bottom: 1px solid #f1f5f9; color: #374151; vertical-align: middle; }
+th { padding: 10px 12px; text-align: left; color: #6b7280; font-weight: 500; border-bottom: 1px solid #e8ecf0; background: #f8fafc; font-size: 12px; white-space: nowrap; }
+td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #374151; vertical-align: middle; }
 tr:last-child td { border-bottom: none; }
 tbody tr:hover td { background: #f8fafc; }
+tr.tr-done td { background: #f1f5f9; }
+tbody tr.tr-done:hover td { background: #e8ecf0; }
 .link-num { color: #3b82f6; text-decoration: none; font-weight: 500; }
 .link-num:hover { text-decoration: underline; }
 .text-muted { color: #9ca3af; font-size: 12px; }
+.cell-ellipsis-title { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cell-ellipsis { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 500; white-space: nowrap; }
 .badge-done { background: #d1fae5; color: #065f46; }
@@ -80,89 +84,182 @@ tbody tr:hover td { background: #f8fafc; }
 .badge-fail { background: #fee2e2; color: #991b1b; }
 .badge-wait { background: #fef3c7; color: #92400e; }
 
-.more-btn { background: none; border: none; cursor: pointer; color: #9ca3af; font-size: 20px; padding: 0 4px; transition: color 0.15s; border-radius: 4px; }
+.app-chip { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+.app-chip-pos { background: #dbeafe; color: #1e40af; }
+.app-chip-pro { background: #ede9fe; color: #5b21b6; }
+
+.more-btn { background: none; border: none; cursor: pointer; color: #9ca3af; font-size: 20px; padding: 2px 4px; transition: color 0.15s; border-radius: 4px; }
 .more-btn:hover { color: #374151; background: #f1f5f9; }
 
-/* ── 모달 오버레이 ── */
+/* 테이블 하단 */
+.table-footer { display: flex; align-items: center; justify-content: flex-end; padding: 10px 16px; border-top: 1px solid #e8ecf0; gap: 8px; }
+.page-size-label { font-size: 12px; color: #9ca3af; }
+.page-size-select { border: 1px solid #e2e8f0; border-radius: 8px; padding: 5px 28px 5px 10px; font-size: 12px; color: #374151; background: #fff; cursor: pointer; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; transition: border-color 0.15s; }
+.page-size-select:hover { border-color: #3b82f6; }
+.page-size-select:focus { outline: none; border-color: #3b82f6; }
+
+/* 플로팅 드롭다운 공용 */
+@keyframes dropdown-in { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
+.floating-dropdown { position: fixed; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); z-index: 500; overflow: hidden; animation: dropdown-in 0.12s ease; }
+.floating-option { padding: 9px 16px; font-size: 13px; cursor: pointer; color: #374151; transition: background 0.1s; white-space: nowrap; }
+.floating-option:hover { background: #f0f7ff; color: #1d4ed8; }
+.floating-option.active { color: #1d4ed8; font-weight: 500; background: #eff6ff; }
+
+/* 더보기 메뉴 */
+.more-menu-option { display: flex; align-items: center; gap: 8px; padding: 10px 16px; font-size: 13px; cursor: pointer; color: #374151; transition: background 0.1s; white-space: nowrap; }
+.more-menu-option:hover { background: #f8fafc; }
+.more-menu-option.danger { color: #ef4444; }
+.more-menu-option i { font-size: 15px; }
+
+/* 모달 */
+@keyframes modal-in { from { opacity:0; transform: translateY(8px) scale(0.98); } to { opacity:1; transform: translateY(0) scale(1); } }
 .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; align-items: center; justify-content: center; }
 .overlay.show { display: flex; }
-
-.modal { background: #fff; border-radius: 12px; border: 1px solid #e2e8f0; width: 560px; max-width: 95vw; max-height: 90vh; display: flex; flex-direction: column; animation: modal-in 0.18s ease; }
-@keyframes modal-in { from { opacity:0; transform: translateY(8px) scale(0.98); } to { opacity:1; transform: translateY(0) scale(1); } }
-
-.modal-header { padding: 18px 20px 14px; border-bottom: 1px solid #e8ecf0; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.modal { background: #fff; border-radius: 12px; border: 1px solid #e2e8f0; width: 580px; max-width: 95vw; max-height: 92vh; display: flex; flex-direction: column; animation: modal-in 0.18s ease; }
+.modal-header { padding: 16px 20px 12px; border-bottom: 1px solid #e8ecf0; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
 .modal-title { font-size: 15px; font-weight: 500; color: #1a202c; }
 .close-btn { background: none; border: none; cursor: pointer; color: #9ca3af; font-size: 20px; line-height: 1; padding: 0; transition: color 0.15s; }
 .close-btn:hover { color: #374151; }
-
-.modal-body { padding: 18px 20px; overflow-y: auto; flex: 1; }
-
-.form-row { margin-bottom: 14px; }
-.form-label { font-size: 12px; color: #6b7280; margin-bottom: 5px; }
-.req { color: #ef4444; margin-left: 2px; }
-.form-input { width: 100%; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; font-size: 13px; color: #1a202c; background: #fff; outline: none; transition: border-color 0.15s; font-family: inherit; }
-.form-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
-textarea.form-input { height: 72px; resize: none; }
-.char-count { font-size: 11px; color: #9ca3af; text-align: right; margin-top: 3px; }
-
-.target-chips { display: flex; gap: 6px; margin-bottom: 14px; }
-.chip { border: 1px solid #e2e8f0; border-radius: 999px; padding: 5px 14px; font-size: 12px; cursor: pointer; color: #6b7280; background: #fff; transition: all 0.15s; }
-.chip:hover { border-color: #93c5fd; color: #1d4ed8; }
-.chip.active { background: #eff6ff; border-color: #3b82f6; color: #1d4ed8; font-weight: 500; }
-
-/* ── 가맹점 선택 피커 ── */
-.store-picker-box { border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-bottom: 14px; }
-.search-bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #e8ecf0; background: #f8fafc; }
-.search-bar i { font-size: 15px; color: #9ca3af; }
-.search-bar input { border: none; background: transparent; font-size: 13px; color: #1a202c; outline: none; flex: 1; font-family: inherit; }
-.search-bar input::placeholder { color: #b0b8c4; }
-
-.two-panel { display: grid; grid-template-columns: 1fr 1fr; }
-.panel-left { border-right: 1px solid #e8ecf0; }
-.panel-head { padding: 7px 12px; background: #f8fafc; border-bottom: 1px solid #e8ecf0; display: flex; align-items: center; justify-content: space-between; }
-.panel-head-txt { font-size: 11px; color: #6b7280; font-weight: 500; }
-.sel-all-btn { font-size: 11px; color: #3b82f6; background: none; border: none; cursor: pointer; padding: 0; }
-.sel-all-btn:hover { text-decoration: underline; }
-.clear-btn { font-size: 11px; color: #ef4444; background: none; border: none; cursor: pointer; padding: 0; }
-.clear-btn:hover { text-decoration: underline; }
-
-.store-list-area { max-height: 180px; overflow-y: auto; }
-.store-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.1s; }
-.store-item:last-child { border-bottom: none; }
-.store-item:hover { background: #f0f7ff; }
-.store-item.selected { background: #eff6ff; }
-.store-item input[type=checkbox] { accent-color: #3b82f6; width: 14px; height: 14px; flex-shrink: 0; cursor: pointer; }
-.store-name-txt { font-size: 12px; color: #1a202c; font-weight: 500; }
-.store-sub-txt { font-size: 11px; color: #9ca3af; }
-
-.count-badge { background: #3b82f6; color: #fff; border-radius: 999px; font-size: 10px; padding: 1px 6px; font-weight: 500; }
-
-.selected-area { max-height: 180px; overflow-y: auto; }
-.selected-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid #f1f5f9; }
-.selected-item:last-child { border-bottom: none; }
-.remove-btn { background: none; border: none; cursor: pointer; color: #d1d5db; font-size: 15px; padding: 0; transition: color 0.1s; }
-.remove-btn:hover { color: #ef4444; }
-
-.empty-state { padding: 32px 12px; text-align: center; color: #b0b8c4; font-size: 12px; }
-.empty-state i { font-size: 26px; display: block; margin-bottom: 6px; color: #d1d5db; }
-
-/* ── 라디오 / 예약 ── */
-.radio-group { display: flex; gap: 18px; }
-.radio-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #6b7280; cursor: pointer; }
-.radio-item input[type=radio] { accent-color: #3b82f6; cursor: pointer; }
-
-.schedule-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 10px; }
-.datetime-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-
-.modal-footer { padding: 14px 20px; border-top: 1px solid #e8ecf0; display: flex; justify-content: flex-end; gap: 8px; flex-shrink: 0; }
+.modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+.modal-footer { padding: 12px 20px; border-top: 1px solid #e8ecf0; display: flex; justify-content: flex-end; gap: 8px; flex-shrink: 0; }
 .btn-cancel { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 20px; font-size: 13px; cursor: pointer; color: #6b7280; transition: all 0.15s; font-family: inherit; }
 .btn-cancel:hover { border-color: #9ca3af; color: #374151; }
 .btn-submit { background: #3b82f6; color: #fff; border: none; border-radius: 8px; padding: 8px 20px; font-size: 13px; cursor: pointer; transition: background 0.15s; font-family: inherit; font-weight: 500; }
 .btn-submit:hover { background: #2563eb; }
 
-/* ── 토스트 ── */
-.toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(20px); background: #1a202c; color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 13px; opacity: 0; transition: all 0.25s; z-index: 200; pointer-events: none; white-space: nowrap; }
+/* 폼 */
+.form-row { margin-bottom: 14px; }
+.form-label { font-size: 12px; color: #6b7280; margin-bottom: 5px; }
+.req { color: #ef4444; margin-left: 2px; }
+.form-input { width: 100%; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; font-size: 13px; color: #1a202c; background: #fff; outline: none; transition: border-color 0.15s; font-family: inherit; }
+.form-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+textarea.form-input { height: 68px; resize: none; }
+.char-count { font-size: 11px; color: #9ca3af; text-align: right; margin-top: 3px; }
+.divider { height: 1px; background: #f1f5f9; margin: 14px 0; }
+
+/* 발송 대상 칩 */
+.target-chips { display: flex; gap: 6px; margin-bottom: 14px; }
+.chip { border: 1px solid #e2e8f0; border-radius: 999px; padding: 5px 14px; font-size: 12px; cursor: pointer; color: #6b7280; background: #fff; transition: all 0.15s; }
+.chip:hover { border-color: #93c5fd; color: #1d4ed8; }
+.chip.active { background: #eff6ff; border-color: #3b82f6; color: #1d4ed8; font-weight: 500; }
+
+/* 가맹점 피커 */
+.store-picker-box { border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-top: 6px; margin-bottom: 4px; }
+.search-bar { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid #e8ecf0; background: #f8fafc; }
+.search-bar i { font-size: 15px; color: #9ca3af; flex-shrink: 0; }
+.search-bar input { border: none; background: transparent; font-size: 13px; color: #1a202c; outline: none; flex: 1; font-family: inherit; }
+.search-bar input::placeholder { color: #b0b8c4; }
+.two-panel { display: grid; grid-template-columns: 1fr 1fr; }
+.panel-left { border-right: 1px solid #e8ecf0; }
+.panel-head { padding: 6px 12px; background: #f8fafc; border-bottom: 1px solid #e8ecf0; display: flex; align-items: center; justify-content: space-between; }
+.panel-head-txt { font-size: 11px; color: #6b7280; font-weight: 500; }
+.sel-all-btn { font-size: 11px; color: #3b82f6; background: none; border: none; cursor: pointer; padding: 0; }
+.sel-all-btn:hover { text-decoration: underline; }
+.clear-btn { font-size: 11px; color: #ef4444; background: none; border: none; cursor: pointer; padding: 0; }
+.clear-btn:hover { text-decoration: underline; }
+.store-list-area { max-height: 150px; overflow-y: auto; }
+.store-item { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.1s; }
+.store-item:last-child { border-bottom: none; }
+.store-item:hover { background: #f0f7ff; }
+.store-item.selected { background: #eff6ff; }
+.store-item input[type=checkbox] { accent-color: #3b82f6; width: 13px; height: 13px; flex-shrink: 0; cursor: pointer; }
+.store-name-txt { font-size: 12px; color: #1a202c; font-weight: 500; }
+.store-sub-txt { font-size: 11px; color: #9ca3af; }
+.count-badge { background: #3b82f6; color: #fff; border-radius: 999px; font-size: 10px; padding: 1px 6px; font-weight: 500; }
+.selected-area { max-height: 150px; overflow-y: auto; }
+.selected-item { display: flex; align-items: center; justify-content: space-between; padding: 7px 12px; border-bottom: 1px solid #f1f5f9; }
+.selected-item:last-child { border-bottom: none; }
+.remove-btn { background: none; border: none; cursor: pointer; color: #d1d5db; font-size: 15px; padding: 0; transition: color 0.1s; }
+.remove-btn:hover { color: #ef4444; }
+.empty-state { padding: 24px 12px; text-align: center; color: #b0b8c4; font-size: 12px; }
+.empty-state i { font-size: 22px; display: block; margin-bottom: 5px; color: #d1d5db; }
+
+/* 전체 매장 - 가맹점/비가맹점 서브 선택 */
+.all-target-sub { margin-top: 10px; }
+
+/* 매장 선택 페이징 */
+.store-pagination { display: flex; align-items: center; justify-content: space-between; padding: 7px 12px; border-top: 1px solid #e8ecf0; background: #f8fafc; }
+.pagination-info { font-size: 11px; color: #9ca3af; white-space: nowrap; }
+.pagination-btns { display: flex; gap: 4px; }
+.page-btn { border: 1px solid #e2e8f0; background: #fff; border-radius: 6px; min-width: 22px; height: 22px; font-size: 11px; color: #6b7280; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; padding: 0 4px; }
+.page-btn:hover:not(:disabled) { border-color: #3b82f6; color: #1d4ed8; }
+.page-btn.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.page-btn i { font-size: 12px; }
+.page-ellipsis { display: flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; font-size: 11px; color: #9ca3af; }
+
+/* 선택 인원 제한 배지 */
+.count-badge.limit-full { background: #ef4444; }
+
+/* 메시지 유형 */
+.msg-type-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.type-card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; cursor: pointer; transition: all 0.15s; }
+.type-card:hover { border-color: #93c5fd; }
+.type-card.on-info { border-color: #0891b2; background: #ecfeff; }
+.type-card.on-ad { border-color: #d97706; background: #fffbeb; }
+.type-card-head { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.type-card-head input[type=radio] { accent-color: #3b82f6; cursor: pointer; }
+.type-card-label { font-size: 13px; font-weight: 500; color: #1a202c; cursor: pointer; }
+.type-card-desc { font-size: 11px; color: #6b7280; line-height: 1.5; padding-left: 20px; }
+
+/* 공지 박스 */
+.notice-box { border-radius: 8px; padding: 10px 12px; margin-top: 10px; display: flex; gap: 8px; align-items: flex-start; }
+.notice-box.warn { background: #fffbeb; border: 1px solid #fcd34d; }
+.notice-box.info-box { background: #eff6ff; border: 1px solid #bfdbfe; }
+.notice-box.ad-target-notice { background: #fff7ed; border: 1px solid #fdba74; }
+.notice-box i { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+.notice-box.warn i { color: #d97706; }
+.notice-box.info-box i { color: #3b82f6; }
+.notice-box.ad-target-notice i { color: #ea580c; }
+.notice-txt { font-size: 12px; color: #374151; line-height: 1.6; }
+.notice-txt strong { font-weight: 500; }
+
+/* 야간/즉시 경고 */
+.night-warn { background: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px; padding: 10px 12px; margin-top: 8px; display: flex; gap: 8px; align-items: flex-start; }
+.night-warn i { font-size: 16px; color: #ef4444; flex-shrink: 0; margin-top: 1px; }
+.night-warn-txt { font-size: 12px; color: #991b1b; line-height: 1.6; }
+.night-warn-txt strong { font-weight: 500; }
+
+/* 예약 박스 */
+.radio-group { display: flex; gap: 18px; }
+.radio-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #6b7280; cursor: pointer; transition: opacity 0.15s; }
+.radio-item input[type=radio] { accent-color: #3b82f6; cursor: pointer; }
+.radio-item.disabled { opacity: 0.45; pointer-events: none; }
+.schedule-inner { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 11px 12px; margin-top: 8px; }
+.datetime-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* 제목 (광고) prefix */
+.title-wrap { position: relative; }
+.ad-prefix { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 13px; color: #d97706; font-weight: 500; pointer-events: none; display: none; }
+
+/* 미리보기 */
+.preview-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 14px; }
+.preview-label { font-size: 11px; color: #9ca3af; margin-bottom: 8px; display: flex; align-items: center; gap: 4px; }
+.preview-label i { font-size: 13px; }
+.preview-notif { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; }
+.pn-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.pn-app { font-size: 11px; color: #9ca3af; }
+.pn-time { font-size: 11px; color: #9ca3af; margin-left: auto; }
+.pn-title { font-size: 13px; font-weight: 500; color: #1a202c; margin-bottom: 2px; }
+.pn-body { font-size: 12px; color: #6b7280; line-height: 1.5; }
+.pn-unsub { margin-top: 6px; font-size: 11px; color: #9ca3af; }
+
+/* 수신거부 안내 칩 */
+.notif-filter-chip { display: inline-flex; align-items: center; gap: 4px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 999px; padding: 2px 8px; font-size: 11px; color: #c2410c; font-weight: 500; margin-bottom: 8px; }
+.notif-filter-chip i { font-size: 12px; }
+
+/* 조회 모달 필드 */
+.view-field-row { display: flex; align-items: flex-start; gap: 12px; padding: 11px 0; border-bottom: 1px solid #f1f5f9; }
+.view-field-row:last-child { border-bottom: none; }
+.view-field-label { width: 72px; font-size: 12px; color: #9ca3af; flex-shrink: 0; padding-top: 2px; }
+.view-field-value { flex: 1; font-size: 13px; color: #1a202c; line-height: 1.5; word-break: break-all; }
+
+/* 토스트 */
+.toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(20px); background: #1a202c; color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 13px; opacity: 0; transition: all 0.25s; z-index: 600; pointer-events: none; white-space: nowrap; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* 검색 하이라이트 */
+.highlight { background: #fef9c3; border-radius: 2px; }
 </style>
 </head>
 <body>
@@ -182,10 +279,13 @@ textarea.form-input { height: 72px; resize: none; }
     <div class="nav-item"><i class="ti ti-package"></i>상품 관리<i class="ti ti-chevron-down arrow"></i></div>
     <div class="nav-item"><i class="ti ti-chart-bar"></i>매장 분석<i class="ti ti-chevron-down arrow"></i></div>
     <div class="nav-item"><i class="ti ti-settings"></i>모드 관리<i class="ti ti-chevron-down arrow"></i></div>
-    <div class="nav-item"><i class="ti ti-devices"></i>터미널 더블렉 설정</div>
-    <div class="nav-item"><i class="ti ti-versions"></i>버전 관리</div>
-    <div class="nav-item"><i class="ti ti-speakerphone"></i>광고 관리</div>
-    <div class="nav-item active"><i class="ti ti-bell-ringing"></i>앱푸쉬 관리</div>
+    <div class="nav-item"><i class="ti ti-devices"></i>터미널/디바이스 설정</div>
+    <div class="nav-item open" onclick="toggleSubMenu(this)"><i class="ti ti-settings-2"></i>운영 관리<i class="ti ti-chevron-down arrow"></i></div>
+    <div class="nav-sub open">
+      <div class="nav-sub-item"><i class="ti ti-versions"></i>버전 관리</div>
+      <div class="nav-sub-item active"><i class="ti ti-bell-ringing"></i>앱푸쉬 관리</div>
+      <div class="nav-sub-item"><i class="ti ti-speakerphone"></i>광고 관리</div>
+    </div>
     <div class="nav-item"><i class="ti ti-headset"></i>고객 지원<i class="ti ti-chevron-down arrow"></i></div>
   </div>
 
@@ -198,7 +298,7 @@ textarea.form-input { height: 72px; resize: none; }
       </div>
       <div class="topbar-right">
         <i class="ti ti-user-circle"></i>
-        <span>곽다희님 ( 010-3032-1219 / 관리자 )</span>
+        <span>곽다희 ( 010-3032-1219 / 관리자 )</span>
         <i class="ti ti-logout logout-btn"></i>
       </div>
     </div>
@@ -219,285 +319,929 @@ textarea.form-input { height: 72px; resize: none; }
         </div>
         <div class="filter-row2">
           <div class="select-wrap">
+            <div class="select-label">앱</div>
+            <div class="select-box" id="filter-app-box" onclick="openFilterAppSelect(event)">
+              <span id="filter-app-display">전체</span>
+              <i class="ti ti-chevron-down"></i>
+            </div>
+          </div>
+          <div class="select-wrap">
             <div class="select-label">발송상태</div>
-            <div class="select-box">전체 <i class="ti ti-chevron-down"></i></div>
+            <div class="select-box" id="filter-status-box" onclick="openFilterStatusSelect(event)">
+              <span id="filter-status-display">전체</span>
+              <i class="ti ti-chevron-down"></i>
+            </div>
           </div>
           <div class="select-wrap">
             <div class="select-label">발송대상</div>
-            <div class="select-box">전체 <i class="ti ti-chevron-down"></i></div>
+            <div class="select-box" id="filter-target-box" onclick="openFilterTargetSelect(event)">
+              <span id="filter-target-display">전체</span>
+              <i class="ti ti-chevron-down"></i>
+            </div>
           </div>
-          <button class="search-btn">검색</button>
+          <button class="search-btn" onclick="doSearch()">검색</button>
         </div>
       </div>
 
       <!-- 테이블 -->
       <div class="table-card">
         <div class="table-header">
-          <button class="reg-btn" onclick="openModal()"><i class="ti ti-plus"></i> 등록</button>
+          <button class="reg-btn" onclick="openRegisterModal()"><i class="ti ti-plus"></i> 등록</button>
         </div>
         <table>
           <thead>
             <tr>
               <th style="width:50px">순번</th>
-              <th style="width:88px">발송상태</th>
+              <th style="width:82px">발송상태</th>
+              <th style="width:90px">앱</th>
+              <th style="width:68px">유형</th>
               <th style="width:120px">발송대상</th>
-              <th>푸쉬 제목</th>
+              <th style="width:150px">푸쉬 제목</th>
               <th>푸쉬 내용</th>
-              <th style="width:150px">예약일시</th>
-              <th style="width:150px">발송일시</th>
-              <th style="width:150px">등록일시</th>
+              <th style="width:142px">예약일시</th>
+              <th style="width:142px">발송일시</th>
+              <th style="width:142px">등록일시</th>
               <th style="width:36px"></th>
             </tr>
           </thead>
-          <tbody>
-            <tr>
-              <td><a class="link-num" href="#">5</a></td>
-              <td><span class="badge badge-done">발송완료</span></td>
-              <td>전체 가맹점</td>
-              <td>5월 정기점검 안내</td>
-              <td class="text-muted">2026년 5월 15일 새벽 2시~4시 서비스 점검…</td>
-              <td>2026.05.14 23:00:00</td>
-              <td>2026.05.14 23:00:02</td>
-              <td>2026.05.12 10:24:11</td>
-              <td><button class="more-btn"><i class="ti ti-dots-vertical"></i></button></td>
-            </tr>
-            <tr>
-              <td><a class="link-num" href="#">4</a></td>
-              <td><span class="badge badge-sched">발송예약</span></td>
-              <td>전체 가맹점</td>
-              <td>앱 업데이트 안내 (v3.2.1)</td>
-              <td class="text-muted">새 버전이 출시되었습니다. 지금 바로 업데이트…</td>
-              <td>2026.05.25 09:00:00</td>
-              <td>-</td>
-              <td>2026.05.20 14:05:33</td>
-              <td><button class="more-btn"><i class="ti ti-dots-vertical"></i></button></td>
-            </tr>
-            <tr>
-              <td><a class="link-num" href="#">3</a></td>
-              <td><span class="badge badge-done">발송완료</span></td>
-              <td>승연배달매장</td>
-              <td>결제 수수료 혜택 안내</td>
-              <td class="text-muted">이번 달 카드 결제 수수료 0.1% 인하 혜택…</td>
-              <td>-</td>
-              <td>2026.05.10 11:00:04</td>
-              <td>2026.05.10 10:58:17</td>
-              <td><button class="more-btn"><i class="ti ti-dots-vertical"></i></button></td>
-            </tr>
-            <tr>
-              <td><a class="link-num" href="#">2</a></td>
-              <td><span class="badge badge-fail">발송실패</span></td>
-              <td>민국 프로 매장</td>
-              <td>긴급 장애 복구 완료 안내</td>
-              <td class="text-muted">일부 결제 오류가 복구되었습니다. 정상 이용…</td>
-              <td>-</td>
-              <td>-</td>
-              <td>2026.05.03 08:30:00</td>
-              <td><button class="more-btn"><i class="ti ti-dots-vertical"></i></button></td>
-            </tr>
-            <tr>
-              <td><a class="link-num" href="#">1</a></td>
-              <td><span class="badge badge-done">발송완료</span></td>
-              <td>전체 가맹점</td>
-              <td>KCP POS+ 서비스 시작 안내</td>
-              <td class="text-muted">KCP POS+ 앱을 사용해 주셔서 감사합니다…</td>
-              <td>-</td>
-              <td>2026.05.01 09:00:01</td>
-              <td>2026.04.30 17:20:44</td>
-              <td><button class="more-btn"><i class="ti ti-dots-vertical"></i></button></td>
-            </tr>
-          </tbody>
+          <tbody id="push-tbody"></tbody>
         </table>
+        <div class="table-footer">
+          <select class="page-size-select" id="page-size-select" onchange="setPageSize(this.value)">
+            <option value="30" selected>30</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- 등록 모달 -->
+<!-- 등록/수정 모달 -->
 <div class="overlay" id="overlay" onclick="handleOverlayClick(event)">
-  <div class="modal" id="modal">
+  <div class="modal">
     <div class="modal-header">
-      <span class="modal-title">앱푸쉬 등록</span>
+      <span class="modal-title" id="modal-title">앱푸쉬 등록</span>
       <button class="close-btn" onclick="closeModal()"><i class="ti ti-x"></i></button>
     </div>
-
     <div class="modal-body">
-      <!-- 발송 대상 -->
+
+      <!-- ① 앱 -->
+      <div class="form-row">
+        <div class="form-label">앱<span class="req">*</span></div>
+        <div class="select-box" id="modal-app-box" onclick="openModalAppSelect(event)" style="max-width:220px;">
+          <span id="modal-app-display">KCP POS+</span>
+          <i class="ti ti-chevron-down"></i>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- ② 메시지 유형 (먼저 선택) -->
+      <div class="form-row">
+        <div class="form-label">메시지 유형<span class="req">*</span></div>
+        <div class="msg-type-row">
+          <div class="type-card on-info" id="tc-info" onclick="switchType('info')">
+            <div class="type-card-head">
+              <input type="radio" name="mtype" value="info" id="r-info" checked onchange="switchType('info')">
+              <label class="type-card-label" for="r-info">정보성 메시지</label>
+            </div>
+            <div class="type-card-desc">점검 안내, 결제 오류 복구,<br>앱 업데이트 등 서비스 안내</div>
+          </div>
+          <div class="type-card" id="tc-ad" onclick="switchType('ad')">
+            <div class="type-card-head">
+              <input type="radio" name="mtype" value="ad" id="r-ad" onchange="switchType('ad')">
+              <label class="type-card-label" for="r-ad">광고성 메시지</label>
+            </div>
+            <div class="type-card-desc">프로모션, 혜택, 이벤트 등<br>마케팅 목적 메시지</div>
+          </div>
+        </div>
+        <div id="ad-notice" class="notice-box warn" style="display:none;">
+          <i class="ti ti-alert-triangle"></i>
+          <div class="notice-txt">
+            <strong>광고성 메시지 법적 필수 처리</strong><br>
+            제목에 <strong>(광고)</strong> 자동 삽입 &nbsp;·&nbsp; 20:00~08:00 예약 발송 불가 (정보통신망법 제50조) &nbsp;·&nbsp; 수신거부 안내 자동 포함
+          </div>
+        </div>
+        <div id="info-notice" class="notice-box info-box" style="display:flex;">
+          <i class="ti ti-info-circle"></i>
+          <div class="notice-txt">
+            <strong>정보성 메시지</strong>는 야간 발송 제한이 없으며 <strong>(광고)</strong> 표기가 불필요합니다.<br>
+            단, 광고 내용이 조금이라도 포함되면 광고성으로 분류하여 등록해주세요.
+          </div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- ③ 발송 대상 (메시지 유형 선택 후) -->
       <div class="form-row">
         <div class="form-label">발송 대상<span class="req">*</span></div>
+
+        <!-- 광고성 선택 시 안내 -->
+        <div id="ad-target-notice" class="notice-box ad-target-notice" style="display:none; margin-bottom:10px;">
+          <i class="ti ti-filter"></i>
+          <div class="notice-txt">
+            <strong>광고성 메시지</strong>는 <strong>KCP POS 서비스 알림 수신을 활성화한 매장</strong>에게만 발송됩니다.<br>
+            (앱 내 마이페이지 → 기본설정 → 서비스 수신 설정 → KCP POS 서비스 알림 수신 ON인 매장)
+          </div>
+        </div>
+
         <div class="target-chips">
-          <div class="chip" id="chip-all" onclick="switchTarget('all')">전체 가맹점</div>
-          <div class="chip active" id="chip-select" onclick="switchTarget('select')">가맹점 선택</div>
+          <div class="chip active" id="chip-all" onclick="switchTarget('all')">전체 매장</div>
+          <div class="chip" id="chip-select" onclick="switchTarget('select')">매장 선택</div>
+        </div>
+
+        <!-- 전체 매장 선택 시 서브 옵션 -->
+        <div id="all-target-sub" class="all-target-sub">
+          <div class="radio-group">
+            <label class="radio-item">
+              <input type="radio" name="alltarget" value="all" checked onchange="switchAllSubTarget('all')"> 전체
+            </label>
+            <label class="radio-item">
+              <input type="radio" name="alltarget" value="merchant" onchange="switchAllSubTarget('merchant')"> 가맹점
+            </label>
+            <label class="radio-item">
+              <input type="radio" name="alltarget" value="nonmerchant" onchange="switchAllSubTarget('nonmerchant')"> 비가맹점
+            </label>
+          </div>
+        </div>
+
+        <div id="store-picker" style="display:none;">
+          <!-- 광고성일 때 수신 활성화 매장만 표시 안내 칩 -->
+          <div id="notif-filter-chip" class="notif-filter-chip" style="display:none;">
+            <i class="ti ti-bell-ringing"></i> 알림 수신 활성화 매장만 표시됩니다
+          </div>
+          <!-- 선택 발송 최대 건수 안내 -->
+          <div class="notice-box info-box" style="margin-bottom:10px;">
+            <i class="ti ti-info-circle"></i>
+            <div class="notice-txt">매장 선택을 통한 발송은 <strong>1회 전송 시 최대 100개</strong>까지 선택 가능합니다.</div>
+          </div>
+          <div class="store-picker-box">
+            <div class="search-bar">
+              <i class="ti ti-search"></i>
+              <input type="text" id="search-input" placeholder="매장명 또는 사업자번호로 검색" oninput="filterStores()">
+            </div>
+            <div class="two-panel">
+              <div class="panel-left">
+                <div class="panel-head">
+                  <span class="panel-head-txt">매장 목록</span>
+                  <button class="sel-all-btn" onclick="selectAll()">전체 선택</button>
+                </div>
+                <div class="store-list-area" id="store-list"></div>
+                <div class="store-pagination" id="store-pagination"></div>
+              </div>
+              <div>
+                <div class="panel-head">
+                  <span class="panel-head-txt">선택됨 <span class="count-badge" id="sel-count">0/100</span></span>
+                  <button class="clear-btn" onclick="clearAll()">전체 해제</button>
+                </div>
+                <div class="selected-area" id="selected-list"></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- 가맹점 선택 피커 -->
-      <div id="store-picker">
-        <div class="form-label" style="margin-bottom:8px;">가맹점 검색 및 선택<span class="req">*</span></div>
-        <div class="store-picker-box">
-          <div class="search-bar">
-            <i class="ti ti-search"></i>
-            <input type="text" id="search-input" placeholder="매장명으로 검색" oninput="filterStores()">
-          </div>
-          <div class="two-panel">
-            <div class="panel-left">
-              <div class="panel-head">
-                <span class="panel-head-txt">전체 가맹점</span>
-                <button class="sel-all-btn" onclick="selectAll()">전체 선택</button>
-              </div>
-              <div class="store-list-area" id="store-list"></div>
-            </div>
-            <div>
-              <div class="panel-head">
-                <span class="panel-head-txt">선택된 가맹점 <span class="count-badge" id="sel-count">0</span></span>
-                <button class="clear-btn" onclick="clearAll()">전체 해제</button>
-              </div>
-              <div class="selected-area" id="selected-list"></div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <div class="divider"></div>
 
-      <!-- 발송 시점 -->
+      <!-- ④ 발송 시점 -->
       <div class="form-row">
         <div class="form-label">발송 시점<span class="req">*</span></div>
         <div class="radio-group">
-          <label class="radio-item"><input type="radio" name="timing" value="now" checked onchange="toggleSchedule()"> 즉시 발송</label>
-          <label class="radio-item"><input type="radio" name="timing" value="sched" onchange="toggleSchedule()"> 예약 발송</label>
+          <label class="radio-item" id="label-now">
+            <input type="radio" name="timing" value="now" checked onchange="toggleSchedule()"> 즉시 발송
+          </label>
+          <label class="radio-item">
+            <input type="radio" name="timing" value="sched" onchange="toggleSchedule()"> 예약 발송
+          </label>
         </div>
-        <div class="schedule-box" id="schedule-box" style="display:none;">
-          <div class="datetime-row">
-            <div>
-              <div class="form-label" style="margin-bottom:4px;">예약 날짜</div>
-              <input class="form-input" type="date" value="2026-05-25">
+        <div id="imm-warn" class="night-warn" style="display:none;">
+          <i class="ti ti-clock"></i>
+          <div class="night-warn-txt">
+            <strong>즉시 발송 불가 (20:00 ~ 익일 08:00)</strong><br>
+            광고성 메시지는 현재 시간대에 즉시 발송이 제한됩니다. 예약 발송을 이용해 주세요.
+          </div>
+        </div>
+        <div id="sched-area" style="display:none;">
+          <div class="schedule-inner">
+            <div class="datetime-row">
+              <div>
+                <div class="form-label" style="margin-bottom:4px;">예약 날짜</div>
+                <input class="form-input" type="date" id="sched-date" value="2026-05-25" onchange="checkNight()">
+              </div>
+              <div>
+                <div class="form-label" style="margin-bottom:4px;">예약 시간</div>
+                <input class="form-input" type="time" id="sched-time" value="09:00" min="08:00" onchange="checkNight()">
+              </div>
             </div>
-            <div>
-              <div class="form-label" style="margin-bottom:4px;">예약 시간</div>
-              <input class="form-input" type="time" value="09:00">
+          </div>
+          <div id="night-warn" class="night-warn" style="display:none;">
+            <i class="ti ti-moon"></i>
+            <div class="night-warn-txt">
+              <strong>야간 발송 불가 (20:00 ~ 익일 08:00)</strong><br>
+              정보통신망법 제50조에 따라 광고성 메시지는 해당 시간대 예약 발송이 제한됩니다. 시간을 변경해 주세요.
             </div>
           </div>
         </div>
       </div>
 
-      <!-- 푸쉬 제목 -->
+      <div class="divider"></div>
+
+      <!-- ⑤ 푸쉬 제목 -->
       <div class="form-row">
         <div class="form-label">푸쉬 제목<span class="req">*</span></div>
-        <input class="form-input" type="text" id="title-input" placeholder="푸쉬 알림 제목을 입력하세요 (최대 50자)" maxlength="50" oninput="updateCount('title-input','title-count',50)">
-        <div class="char-count"><span id="title-count">0</span>/50</div>
+        <div class="title-wrap">
+          <span class="ad-prefix" id="ad-prefix">(광고)&nbsp;</span>
+          <input class="form-input" type="text" id="title-input"
+            placeholder="제목 입력 (최대 15자)" maxlength="15"
+            oninput="updateCount('title-input','title-count');updatePreview()"
+            style="padding-left:10px;">
+        </div>
+        <div class="char-count"><span id="title-count">0</span>/15</div>
       </div>
 
-      <!-- 푸쉬 내용 -->
+      <!-- ⑥ 푸쉬 내용 -->
       <div class="form-row">
         <div class="form-label">푸쉬 내용<span class="req">*</span></div>
-        <textarea class="form-input" id="body-input" placeholder="푸쉬 알림 내용을 입력하세요 (최대 100자)" maxlength="100" oninput="updateCount('body-input','body-count',100)"></textarea>
-        <div class="char-count"><span id="body-count">0</span>/100</div>
+        <textarea class="form-input" id="body-input"
+          placeholder="내용 입력 (최대 30자)" maxlength="30"
+          oninput="updateCount('body-input','body-count');updatePreview()"></textarea>
+        <div class="char-count"><span id="body-count">0</span>/30</div>
       </div>
-    </div>
 
+      <!-- 미리보기 -->
+      <div class="preview-box">
+        <div class="preview-label"><i class="ti ti-device-mobile"></i> 알림 미리보기</div>
+        <div class="preview-notif">
+          <div class="pn-head">
+            <i class="ti ti-bell" style="font-size:14px;color:#9ca3af;"></i>
+            <span class="pn-app" id="pn-app-name">KCP POS+</span>
+            <span class="pn-time">지금</span>
+          </div>
+          <div class="pn-title" id="prev-title">제목이 여기에 표시됩니다</div>
+          <div class="pn-body" id="prev-body">내용이 여기에 표시됩니다</div>
+          <div class="pn-unsub" id="prev-unsub" style="display:none;">수신거부: 앱 내 마이페이지 &gt; 기본 설정 &gt; 서비스 수신 설정 &gt; KCP POS 서비스 알림 수신 해제</div>
+        </div>
+      </div>
+
+    </div>
     <div class="modal-footer">
       <button class="btn-cancel" onclick="closeModal()">취소</button>
-      <button class="btn-submit" onclick="submitPush()">등록</button>
+      <button class="btn-submit" id="btn-submit" onclick="submitPush()">등록</button>
     </div>
   </div>
 </div>
 
-<!-- 토스트 -->
+<!-- 조회 모달 -->
+<div class="overlay" id="view-overlay" onclick="handleViewOverlayClick(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">앱푸쉬 상세</span>
+      <button class="close-btn" onclick="closeViewModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body" id="view-modal-body"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeViewModal()">닫기</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
+// ── 데이터 ──
+// notifEnabled: KCP POS 서비스 알림 수신 활성화 여부
+// bizNum: 사업자번호
 const stores = [
-  { id:1, name:'승연배달매장', sub:'서울 강남구' },
-  { id:2, name:'민국 프로 매장', sub:'서울 서초구' },
-  { id:3, name:'비가맹 테스트점', sub:'경기 성남시' },
-  { id:4, name:'한선호 매장', sub:'서울 마포구' },
-  { id:5, name:'픽업전체무제한', sub:'부산 해운대구' },
-  { id:6, name:'승연피자매장', sub:'서울 종로구' },
-  { id:7, name:'KCP 직영점A', sub:'서울 중구' },
-  { id:8, name:'테스트 가맹점', sub:'인천 남동구' },
+  { id:1, name:'다냄체리카페',       sub:'서울 마포구',  bizNum:'123-45-67890', notifEnabled: true,  kcpMerchant: true  },
+  { id:2, name:'맛있는 빵집 용산점', sub:'서울 용산구',  bizNum:'234-56-78901', notifEnabled: true,  kcpMerchant: true  },
+  { id:3, name:'데니이다 부산점',     sub:'서울 노량구',  bizNum:'345-67-89012', notifEnabled: false, kcpMerchant: false },
+  { id:4, name:'덮밥집',             sub:'서울 강남구',  bizNum:'456-78-90123', notifEnabled: true,  kcpMerchant: true  },
+  { id:5, name:'커피로스터리',        sub:'서울 성동구',  bizNum:'567-89-01234', notifEnabled: false, kcpMerchant: false },
+  { id:6, name:'스시야 강남점',       sub:'서울 강남구',  bizNum:'678-90-12345', notifEnabled: true,  kcpMerchant: true  },
+];
+// 페이징 테스트용 매장 데이터 생성 (id 7~900)
+for (let i = 7; i <= 900; i++) {
+  stores.push({
+    id: i,
+    name: `테스트 가맹점 ${i}`,
+    sub: '서울 강남구',
+    bizNum: `${String(100 + (i % 900)).padStart(3,'0')}-${String(10 + (i % 90)).padStart(2,'0')}-${String(10000 + i).padStart(5,'0')}`,
+    notifEnabled: i % 2 === 0,
+    kcpMerchant: i % 3 !== 0,
+  });
+}
+
+let pushList = [
+  { id:5, status:'done', app:'KCP POS+', msgType:'info', targetType:'all', allSubTarget:'all', targetStores:[], title:'5월 정기점검 안내', body:'2026년 5월 15일 새벽 2시~4시 서비스 점검이 예정되어 있습니다.', timing:'sched', schedDate:'2026-05-14', schedTime:'23:00', schedAt:'2026.05.14 23:00:00', sentAt:'2026.05.14 23:00:02', regAt:'2026.05.12 10:24:11' },
+  { id:4, status:'sched', app:'KCP POS+', msgType:'ad', targetType:'all', allSubTarget:'merchant', targetStores:[], title:'앱 업데이트 혜택 안내 (v3.2.1)', body:'지금 업데이트하면 결제 수수료 할인 쿠폰을 드립니다.', timing:'sched', schedDate:'2026-05-25', schedTime:'09:00', schedAt:'2026.05.25 09:00:00', sentAt:'-', regAt:'2026.05.20 14:05:33' },
+  { id:3, status:'done', app:'KCP POS+', msgType:'ad', targetType:'select', targetStores:[1], title:'결제 수수료 혜택 안내', body:'이번 달 카드 결제 수수료 0.1% 인하 혜택을 제공합니다.', timing:'now', schedDate:'', schedTime:'', schedAt:'-', sentAt:'2026.05.10 11:00:04', regAt:'2026.05.10 10:58:17' },
+  { id:2, status:'fail', app:'KCP POS pro', msgType:'info', targetType:'select', targetStores:[3], title:'긴급 장애 복구 완료 안내', body:'일부 결제 오류가 복구되었습니다. 정상 이용 가능합니다.', timing:'now', schedDate:'', schedTime:'', schedAt:'-', sentAt:'-', regAt:'2026.05.03 08:30:00' },
+  { id:1, status:'done', app:'KCP POS+', msgType:'info', targetType:'all', allSubTarget:'all', targetStores:[], title:'KCP POS+ 서비스 시작 안내', body:'KCP POS+ 앱을 사용해 주셔서 감사합니다.', timing:'now', schedDate:'', schedTime:'', schedAt:'-', sentAt:'2026.05.01 09:00:01', regAt:'2026.04.30 17:20:44' },
 ];
 
-let selected = new Set();
-let query = '';
+const APP_OPTIONS_FILTER    = ['전체', 'KCP POS+', 'KCP POS pro'];
+const APP_OPTIONS_MODAL     = ['KCP POS+', 'KCP POS pro'];
+const STATUS_OPTIONS_FILTER = ['전체', '발송예약', '발송완료', '발송실패'];
+const TARGET_OPTIONS_FILTER = ['전체', '전체 매장', '특정 매장'];
 
-function openModal() {
+let modalMode      = 'register';
+let currentItemId  = null;
+let modalAppValue  = 'KCP POS+';
+let filterAppValue    = '전체';
+let filterStatusValue = '전체';
+let filterTargetValue = '전체';
+let msgType  = 'info';  // 기본값: 정보성
+let pageSize = 30;
+let nextId   = 6;
+let selected   = new Set();
+let storeQuery = '';
+let allSubTarget = 'all';   // 전체 매장 선택 시 서브 옵션: all / merchant / nonmerchant
+let storePage  = 1;
+const STORE_PAGE_SIZE = 100;
+const MAX_SELECT_STORES = 100;
+
+// ── 플로팅 드롭다운 (공용) ──
+let floatingCallback  = null;
+let floatingTriggerEl = null;
+
+function openFloatingSelect(triggerEl, options, currentVal, callback) {
+  const existing = document.getElementById('app-floating-dropdown');
+  if (existing) {
+    closeFloatingSelect();
+    if (floatingTriggerEl === triggerEl) return;
+  }
+  floatingCallback  = callback;
+  floatingTriggerEl = triggerEl;
+  triggerEl.classList.add('open');
+  const rect = triggerEl.getBoundingClientRect();
+  const el   = document.createElement('div');
+  el.id        = 'app-floating-dropdown';
+  el.className = 'floating-dropdown';
+  el.style.cssText = `top:${rect.bottom + 4}px;left:${rect.left}px;min-width:${rect.width}px;`;
+  el.innerHTML = options.map(opt =>
+    `<div class="floating-option${opt === currentVal ? ' active' : ''}" onclick="pickFloatingOption(${JSON.stringify(opt)})">${opt}</div>`
+  ).join('');
+  document.body.appendChild(el);
+  setTimeout(() => document.addEventListener('click', closeFloatingSelect, { once: true }), 0);
+}
+function pickFloatingOption(val) {
+  if (floatingCallback) floatingCallback(val);
+  closeFloatingSelect();
+}
+function closeFloatingSelect() {
+  const el = document.getElementById('app-floating-dropdown');
+  if (el) el.remove();
+  if (floatingTriggerEl) floatingTriggerEl.classList.remove('open');
+  floatingCallback  = null;
+  floatingTriggerEl = null;
+}
+
+// 필터 드롭다운
+function openFilterAppSelect(event) {
+  event.stopPropagation();
+  openFloatingSelect(document.getElementById('filter-app-box'), APP_OPTIONS_FILTER, filterAppValue, val => {
+    filterAppValue = val;
+    document.getElementById('filter-app-display').textContent = val;
+  });
+}
+function openFilterStatusSelect(event) {
+  event.stopPropagation();
+  openFloatingSelect(document.getElementById('filter-status-box'), STATUS_OPTIONS_FILTER, filterStatusValue, val => {
+    filterStatusValue = val;
+    document.getElementById('filter-status-display').textContent = val;
+  });
+}
+function openFilterTargetSelect(event) {
+  event.stopPropagation();
+  openFloatingSelect(document.getElementById('filter-target-box'), TARGET_OPTIONS_FILTER, filterTargetValue, val => {
+    filterTargetValue = val;
+    document.getElementById('filter-target-display').textContent = val;
+  });
+}
+function openModalAppSelect(event) {
+  event.stopPropagation();
+  openFloatingSelect(document.getElementById('modal-app-box'), APP_OPTIONS_MODAL, modalAppValue, val => {
+    modalAppValue = val;
+    document.getElementById('modal-app-display').textContent = val;
+    updatePreview();
+  });
+}
+
+// 검색 실행
+function doSearch() { renderTable(); }
+function setPageSize(v) { pageSize = parseInt(v); renderTable(); }
+
+// 필터 적용 후 리스트 반환
+function getFilteredList() {
+  let list = [...pushList];
+  if (filterAppValue !== '전체') list = list.filter(p => p.app === filterAppValue);
+  if (filterStatusValue !== '전체') {
+    const map = { '발송예약': 'sched', '발송완료': 'done', '발송실패': 'fail' };
+    list = list.filter(p => p.status === map[filterStatusValue]);
+  }
+  if (filterTargetValue !== '전체') {
+    if (filterTargetValue === '전체 매장') list = list.filter(p => p.targetType === 'all');
+    if (filterTargetValue === '특정 매장')  list = list.filter(p => p.targetType === 'select');
+  }
+  return list.slice(0, pageSize);
+}
+
+// ── 테이블 렌더링 ──
+function statusBadge(s) {
+  return { done:'<span class="badge badge-done">발송완료</span>', sched:'<span class="badge badge-sched">발송예약</span>', fail:'<span class="badge badge-fail">발송실패</span>', wait:'<span class="badge badge-wait">발송대기</span>' }[s] || '';
+}
+function typeBadge(t) {
+  return t === 'ad'
+    ? '<span class="badge" style="background:#fffbeb;color:#92400e;">광고성</span>'
+    : '<span class="badge" style="background:#f1f5f9;color:#475569;">정보성</span>';
+}
+function appChip(app) {
+  return app === 'KCP POS+'
+    ? '<span class="app-chip app-chip-pos">KCP POS+</span>'
+    : '<span class="app-chip app-chip-pro">KCP POS pro</span>';
+}
+function targetLabel(item) {
+  if (item.targetType === 'all') {
+    if (item.allSubTarget === 'merchant')    return '전체 매장 (가맹점)';
+    if (item.allSubTarget === 'nonmerchant') return '전체 매장 (비가맹점)';
+    return '전체 매장';
+  }
+  const names = item.targetStores.map(id => stores.find(s => s.id === id)?.name).filter(Boolean);
+  if (!names.length) return '-';
+  return names.length === 1 ? names[0] : `${names[0]} 외 ${names.length - 1}건`;
+}
+function displayTitle(item) {
+  return item.msgType === 'ad' ? `(광고) ${item.title}` : item.title;
+}
+
+function renderTable() {
+  const tbody = document.getElementById('push-tbody');
+  const list  = getFilteredList();
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:40px;color:#9ca3af;">등록된 앱푸쉬가 없습니다.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(item => {
+    const isDone  = item.status === 'done';
+    const trClass = isDone ? ' class="tr-done"' : '';
+    const numLink = item.status === 'sched'
+      ? `<a class="link-num" href="#" onclick="event.preventDefault();openEditModal(${item.id})">${item.id}</a>`
+      : `<a class="link-num" href="#" onclick="event.preventDefault();openViewModal(${item.id})">${item.id}</a>`;
+    return `<tr${trClass}>
+      <td>${numLink}</td>
+      <td>${statusBadge(item.status)}</td>
+      <td>${appChip(item.app)}</td>
+      <td>${typeBadge(item.msgType)}</td>
+      <td>${targetLabel(item)}</td>
+      <td class="cell-ellipsis-title">${displayTitle(item)}</td>
+      <td class="text-muted cell-ellipsis">${item.body}</td>
+      <td>${item.schedAt}</td>
+      <td>${item.sentAt}</td>
+      <td>${item.regAt}</td>
+      <td><button class="more-btn" onclick="toggleMoreMenu(event,${item.id})"><i class="ti ti-dots-vertical"></i></button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── 등록/수정 모달 ──
+function openRegisterModal() {
+  modalMode     = 'register';
+  currentItemId = null;
+  document.getElementById('modal-title').textContent = '앱푸쉬 등록';
+  document.getElementById('btn-submit').textContent  = '등록';
+  resetForm();
+  document.getElementById('overlay').classList.add('show');
+}
+function openEditModal(id) {
+  const item = pushList.find(p => p.id === id);
+  if (!item) return;
+  modalMode     = 'edit';
+  currentItemId = id;
+  document.getElementById('modal-title').textContent = '앱푸쉬 수정';
+  document.getElementById('btn-submit').textContent  = '수정';
+  populateForm(item);
   document.getElementById('overlay').classList.add('show');
 }
 function closeModal() {
   document.getElementById('overlay').classList.remove('show');
+  closeFloatingSelect();
 }
 function handleOverlayClick(e) {
   if (e.target === document.getElementById('overlay')) closeModal();
 }
 
+function resetForm() {
+  modalAppValue = 'KCP POS+';
+  document.getElementById('modal-app-display').textContent = 'KCP POS+';
+  document.querySelector('input[name="timing"][value="now"]').checked = true;
+  switchType('info');     // 기본값: 정보성
+  switchTarget('all');    // 기본값: 전체 매장
+  allSubTarget = 'all';
+  document.querySelector('input[name="alltarget"][value="all"]').checked = true;
+  selected.clear();
+  storeQuery = '';
+  storePage  = 1;
+  document.getElementById('search-input').value = '';
+  toggleSchedule();
+  document.getElementById('title-input').value = '';
+  document.getElementById('body-input').value  = '';
+  document.getElementById('title-count').textContent = '0';
+  document.getElementById('body-count').textContent  = '0';
+  renderList(); renderSelected();
+  updatePreview();
+}
+function populateForm(item) {
+  modalAppValue = item.app;
+  document.getElementById('modal-app-display').textContent = item.app;
+  switchType(item.msgType || 'info');
+  switchTarget(item.targetType);
+  allSubTarget = item.allSubTarget || 'all';
+  document.querySelector(`input[name="alltarget"][value="${allSubTarget}"]`).checked = true;
+  selected   = new Set(item.targetStores);
+  storeQuery = '';
+  storePage  = 1;
+  document.getElementById('search-input').value = '';
+  const timingEl = document.querySelector(`input[name="timing"][value="${item.timing}"]`);
+  if (timingEl) timingEl.checked = true;
+  if (item.timing === 'sched') {
+    document.getElementById('sched-date').value = item.schedDate;
+    document.getElementById('sched-time').value = item.schedTime;
+  }
+  toggleSchedule();
+  document.getElementById('title-input').value = item.title;
+  document.getElementById('body-input').value  = item.body;
+  document.getElementById('title-count').textContent = item.title.length;
+  document.getElementById('body-count').textContent  = item.body.length;
+  renderList(); renderSelected();
+  updatePreview();
+}
+
+// ── 조회 모달 ──
+function openViewModal(id) {
+  const item = pushList.find(p => p.id === id);
+  if (!item) return;
+  const tLabel = item.targetType === 'all' ? targetLabel(item)
+    : item.targetStores.map(sid => stores.find(s => s.id === sid)?.name).filter(Boolean).join(', ') || '-';
+  const schedRow = item.timing === 'sched'
+    ? `<div class="view-field-row"><div class="view-field-label">예약일시</div><div class="view-field-value">${item.schedAt}</div></div>` : '';
+  document.getElementById('view-modal-body').innerHTML = `
+    <div class="view-field-row"><div class="view-field-label">앱</div><div class="view-field-value">${appChip(item.app)}</div></div>
+    <div class="view-field-row"><div class="view-field-label">유형</div><div class="view-field-value">${typeBadge(item.msgType)}</div></div>
+    <div class="view-field-row"><div class="view-field-label">발송 상태</div><div class="view-field-value">${statusBadge(item.status)}</div></div>
+    <div class="view-field-row"><div class="view-field-label">발송 대상</div><div class="view-field-value">${tLabel}</div></div>
+    <div class="view-field-row"><div class="view-field-label">발송 시점</div><div class="view-field-value">${item.timing === 'sched' ? '예약 발송' : '즉시 발송'}</div></div>
+    ${schedRow}
+    <div class="view-field-row"><div class="view-field-label">푸쉬 제목</div><div class="view-field-value">${displayTitle(item)}</div></div>
+    <div class="view-field-row"><div class="view-field-label">푸쉬 내용</div><div class="view-field-value" style="white-space:pre-wrap;">${item.body}</div></div>
+    <div class="view-field-row"><div class="view-field-label">등록일시</div><div class="view-field-value">${item.regAt}</div></div>
+    <div class="view-field-row"><div class="view-field-label">발송일시</div><div class="view-field-value">${item.sentAt}</div></div>
+  `;
+  document.getElementById('view-overlay').classList.add('show');
+}
+function closeViewModal() { document.getElementById('view-overlay').classList.remove('show'); }
+function handleViewOverlayClick(e) { if (e.target === document.getElementById('view-overlay')) closeViewModal(); }
+
+// ── 메시지 유형 전환 ──
+function switchType(t) {
+  msgType = t;
+  document.getElementById('tc-info').className = 'type-card' + (t === 'info' ? ' on-info' : '');
+  document.getElementById('tc-ad').className   = 'type-card' + (t === 'ad'   ? ' on-ad'   : '');
+  document.getElementById('r-info').checked = t === 'info';
+  document.getElementById('r-ad').checked   = t === 'ad';
+  document.getElementById('ad-notice').style.display   = t === 'ad'   ? 'flex' : 'none';
+  document.getElementById('info-notice').style.display = t === 'info' ? 'flex' : 'none';
+
+  // (광고) prefix
+  const prefix  = document.getElementById('ad-prefix');
+  const titleIn = document.getElementById('title-input');
+  if (t === 'ad') { prefix.style.display = 'block'; titleIn.style.paddingLeft = '58px'; }
+  else            { prefix.style.display = 'none';  titleIn.style.paddingLeft = '10px'; }
+
+  // 발송 대상 안내 & 리스트 재렌더
+  document.getElementById('ad-target-notice').style.display = t === 'ad' ? 'flex' : 'none';
+  document.getElementById('notif-filter-chip').style.display =
+    (t === 'ad' && document.getElementById('chip-select').classList.contains('active')) ? 'inline-flex' : 'none';
+
+  // 광고성 전환 시 선택된 매장 중 수신 비활성화 매장 제거
+  if (t === 'ad') {
+    const notifIds = new Set(stores.filter(s => s.notifEnabled).map(s => s.id));
+    selected = new Set([...selected].filter(id => notifIds.has(id)));
+  }
+
+  renderList(); renderSelected();
+  checkImmediateRestriction();
+  checkNight();
+  updatePreview();
+}
+
+// ── 즉시발송 야간 제한 (광고성) ──
+function checkImmediateRestriction() {
+  const labelNow = document.getElementById('label-now');
+  const radioNow = document.querySelector('input[name="timing"][value="now"]');
+  const immWarn  = document.getElementById('imm-warn');
+  if (msgType !== 'ad') {
+    labelNow.classList.remove('disabled');
+    radioNow.disabled = false;
+    immWarn.style.display = 'none';
+    return;
+  }
+  const h = new Date().getHours();
+  const restricted = (h >= 20 || h < 8);
+  if (restricted) {
+    labelNow.classList.add('disabled');
+    radioNow.disabled = true;
+    immWarn.style.display = 'flex';
+    if (radioNow.checked) {
+      document.querySelector('input[name="timing"][value="sched"]').checked = true;
+      toggleSchedule();
+    }
+  } else {
+    labelNow.classList.remove('disabled');
+    radioNow.disabled = false;
+    immWarn.style.display = 'none';
+  }
+}
+
+// ── 발송 시점 ──
+function toggleSchedule() {
+  const v = document.querySelector('input[name="timing"]:checked').value;
+  document.getElementById('sched-area').style.display = v === 'sched' ? 'block' : 'none';
+  if (v === 'sched') checkNight();
+  else document.getElementById('night-warn').style.display = 'none';
+}
+
+// ── 야간 경고 / 예약시간 00:00~08:00 자동 보정 ──
+function checkNight() {
+  const isSched = document.querySelector('input[name="timing"]:checked').value === 'sched';
+  const warn = document.getElementById('night-warn');
+  if (!isSched || msgType === 'info') { warn.style.display = 'none'; return; }
+  const timeEl = document.getElementById('sched-time');
+  const t = timeEl.value;
+  if (!t) { warn.style.display = 'none'; return; }
+  const h = parseInt(t.split(':')[0]);
+  if (h < 8) { timeEl.value = '08:00'; warn.style.display = 'none'; return; }
+  warn.style.display = (h >= 20) ? 'flex' : 'none';
+}
+
+// ── 발송 대상 전환 ──
 function switchTarget(type) {
   document.getElementById('chip-all').classList.toggle('active', type === 'all');
   document.getElementById('chip-select').classList.toggle('active', type === 'select');
-  document.getElementById('store-picker').style.display = type === 'select' ? 'block' : 'none';
+  const pickerEl = document.getElementById('store-picker');
+  const subEl    = document.getElementById('all-target-sub');
+  const chipEl   = document.getElementById('notif-filter-chip');
+  if (type === 'select') {
+    pickerEl.style.display = 'block';
+    subEl.style.display = 'none';
+    chipEl.style.display = msgType === 'ad' ? 'inline-flex' : 'none';
+    storePage = 1;
+    renderList(); renderSelected();
+  } else {
+    pickerEl.style.display = 'none';
+    subEl.style.display = 'block';
+    chipEl.style.display = 'none';
+  }
 }
 
-function toggleSchedule() {
-  const val = document.querySelector('input[name="timing"]:checked').value;
-  document.getElementById('schedule-box').style.display = val === 'sched' ? 'block' : 'none';
+// 전체 매장 - 가맹점/비가맹점 서브 옵션 전환
+function switchAllSubTarget(v) {
+  allSubTarget = v;
+}
+
+// ── 스토어 피커 ──
+// 광고성일 때는 notifEnabled: true 매장만, 정보성은 전체
+function getAvailableStores() {
+  return msgType === 'ad' ? stores.filter(s => s.notifEnabled) : stores;
 }
 
 function filterStores() {
-  query = document.getElementById('search-input').value.trim().toLowerCase();
+  storeQuery = document.getElementById('search-input').value.trim().toLowerCase();
+  storePage = 1;
   renderList();
 }
 
 function renderList() {
-  const filtered = stores.filter(s => s.name.toLowerCase().includes(query));
-  const el = document.getElementById('store-list');
+  const available = getAvailableStores();
+  // 매장명 또는 사업자번호로 검색
+  const filtered = available.filter(s =>
+    s.name.toLowerCase().includes(storeQuery) ||
+    s.bizNum.replace(/-/g, '').includes(storeQuery.replace(/-/g, ''))
+  );
+  const el    = document.getElementById('store-list');
+  const pagEl = document.getElementById('store-pagination');
   if (!filtered.length) {
     el.innerHTML = '<div class="empty-state"><i class="ti ti-search"></i>검색 결과가 없습니다</div>';
+    pagEl.innerHTML = '';
     return;
   }
-  el.innerHTML = filtered.map(s => `
+  const totalPages = Math.max(1, Math.ceil(filtered.length / STORE_PAGE_SIZE));
+  if (storePage > totalPages) storePage = totalPages;
+  const start = (storePage - 1) * STORE_PAGE_SIZE;
+  const pageItems = filtered.slice(start, start + STORE_PAGE_SIZE);
+  el.innerHTML = pageItems.map(s => {
+    // 검색어 하이라이트
+    const hl = (str, q) => q
+      ? str.replace(new RegExp(`(${q.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')})`, 'gi'), '<span class="highlight">$1</span>')
+      : str;
+    const nameHl = hl(s.name, storeQuery);
+    const bizHl  = hl(s.bizNum, storeQuery);
+    return `
     <div class="store-item${selected.has(s.id) ? ' selected' : ''}" onclick="toggleStore(${s.id})">
       <input type="checkbox" ${selected.has(s.id) ? 'checked' : ''} onclick="event.stopPropagation();toggleStore(${s.id})">
       <div>
-        <div class="store-name-txt">${s.name}</div>
-        <div class="store-sub-txt">${s.sub}</div>
+        <div class="store-name-txt">${nameHl}</div>
+        <div class="store-sub-txt">${bizHl} · ${s.sub}</div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+  renderStorePagination(totalPages, filtered.length);
 }
 
+function renderStorePagination(totalPages, totalCount) {
+  const pagEl = document.getElementById('store-pagination');
+  if (totalPages <= 1) { pagEl.innerHTML = ''; return; }
+  const start = (storePage - 1) * STORE_PAGE_SIZE + 1;
+  const end   = Math.min(storePage * STORE_PAGE_SIZE, totalCount);
+  let html = `<span class="pagination-info">${start}-${end} / ${totalCount.toLocaleString()}</span><div class="pagination-btns">`;
+  html += `<button class="page-btn" ${storePage <= 1 ? 'disabled' : ''} onclick="goStorePage(${storePage - 1})"><i class="ti ti-chevron-left"></i></button>`;
+  getStorePageNumbers(storePage, totalPages).forEach(p => {
+    if (p === '...') {
+      html += `<span class="page-ellipsis">...</span>`;
+    } else {
+      html += `<button class="page-btn${p === storePage ? ' active' : ''}" onclick="goStorePage(${p})">${p.toLocaleString()}</button>`;
+    }
+  });
+  html += `<button class="page-btn" ${storePage >= totalPages ? 'disabled' : ''} onclick="goStorePage(${storePage + 1})"><i class="ti ti-chevron-right"></i></button>`;
+  html += `</div>`;
+  pagEl.innerHTML = html;
+}
+
+// 페이지 번호 목록 생성 (1 2 3 4 5 6 ... 마지막 형태)
+function getStorePageNumbers(current, total) {
+  const visible = 6; // 끝 페이지를 제외하고 보여줄 페이지 번호 수
+  if (total <= visible + 1) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  if (current <= visible - 2) {
+    return [...Array.from({ length: visible }, (_, i) => i + 1), '...', total];
+  }
+  if (current >= total - (visible - 3)) {
+    return [1, '...', ...Array.from({ length: visible - 1 }, (_, i) => total - (visible - 2) + i)];
+  }
+  return [1, '...', current - 1, current, current + 1, '...', total];
+}
+
+function goStorePage(p) { storePage = p; renderList(); }
+
 function renderSelected() {
-  const sel = stores.filter(s => selected.has(s.id));
-  document.getElementById('sel-count').textContent = sel.length;
+  const available = getAvailableStores();
+  const sel = available.filter(s => selected.has(s.id));
+  const countEl = document.getElementById('sel-count');
+  countEl.textContent = `${sel.length}/${MAX_SELECT_STORES}`;
+  countEl.classList.toggle('limit-full', sel.length >= MAX_SELECT_STORES);
   const el = document.getElementById('selected-list');
   if (!sel.length) {
-    el.innerHTML = '<div class="empty-state"><i class="ti ti-building-store"></i>선택된 가맹점이 없습니다</div>';
+    el.innerHTML = '<div class="empty-state"><i class="ti ti-building-store"></i>선택된 매장이 없습니다</div>';
     return;
   }
   el.innerHTML = sel.map(s => `
     <div class="selected-item">
       <div>
         <div class="store-name-txt">${s.name}</div>
-        <div class="store-sub-txt">${s.sub}</div>
+        <div class="store-sub-txt">${s.bizNum}</div>
       </div>
       <button class="remove-btn" onclick="removeStore(${s.id})"><i class="ti ti-x"></i></button>
     </div>`).join('');
 }
 
 function toggleStore(id) {
+  if (!selected.has(id) && selected.size >= MAX_SELECT_STORES) {
+    showToast(`매장은 최대 ${MAX_SELECT_STORES}개까지 선택 가능합니다.`);
+    return;
+  }
   selected.has(id) ? selected.delete(id) : selected.add(id);
   renderList(); renderSelected();
 }
-function removeStore(id) {
-  selected.delete(id); renderList(); renderSelected();
-}
+function removeStore(id) { selected.delete(id); renderList(); renderSelected(); }
 function selectAll() {
-  stores.filter(s => s.name.toLowerCase().includes(query)).forEach(s => selected.add(s.id));
+  const available = getAvailableStores();
+  const candidates = available.filter(s => s.name.toLowerCase().includes(storeQuery) || s.bizNum.includes(storeQuery));
+  let limitHit = false;
+  for (const s of candidates) {
+    if (selected.size >= MAX_SELECT_STORES) { limitHit = true; break; }
+    selected.add(s.id);
+  }
+  if (limitHit) showToast(`매장은 최대 ${MAX_SELECT_STORES}개까지 선택 가능합니다.`);
   renderList(); renderSelected();
 }
-function clearAll() {
-  selected.clear(); renderList(); renderSelected();
+function clearAll()  { selected.clear(); renderList(); renderSelected(); }
+function updateCount(inputId, countId) { document.getElementById(countId).textContent = document.getElementById(inputId).value.length; }
+
+// ── 미리보기 ──
+function updatePreview() {
+  const t      = document.getElementById('title-input').value || '제목이 여기에 표시됩니다';
+  const b      = document.getElementById('body-input').value  || '내용이 여기에 표시됩니다';
+  const prefix = msgType === 'ad' ? '(광고) ' : '';
+  document.getElementById('prev-title').textContent = prefix + t;
+  document.getElementById('prev-body').textContent  = b;
+  document.getElementById('prev-unsub').style.display = msgType === 'ad' ? 'block' : 'none';
+  document.getElementById('pn-app-name').textContent  = modalAppValue;
 }
 
-function updateCount(inputId, countId, max) {
-  document.getElementById(countId).textContent = document.getElementById(inputId).value.length;
+// ── 제출 ──
+function submitPush() {
+  const title        = document.getElementById('title-input').value.trim();
+  const body         = document.getElementById('body-input').value.trim();
+  const isSelectMode = document.getElementById('chip-select').classList.contains('active');
+  const timing       = document.querySelector('input[name="timing"]:checked').value;
+  if (!title) { showToast('푸쉬 제목을 입력해주세요.'); return; }
+  if (!body)  { showToast('푸쉬 내용을 입력해주세요.'); return; }
+  if (isSelectMode && selected.size === 0) { showToast('매장을 1개 이상 선택해주세요.'); return; }
+
+  let schedAt = '-', schedDate = '', schedTime = '';
+  if (timing === 'sched') {
+    schedDate = document.getElementById('sched-date').value;
+    schedTime = document.getElementById('sched-time').value;
+    if (!schedDate || !schedTime) { showToast('예약 일시를 설정해주세요.'); return; }
+    if (msgType === 'ad') {
+      const h = parseInt(schedTime.split(':')[0]);
+      if (h >= 20 || h < 8) { showToast('광고성 메시지는 20:00~08:00 발송이 불가합니다.'); return; }
+    }
+    schedAt = schedDate.replace(/-/g, '.') + ' ' + schedTime + ':00';
+  }
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function nowStr() {
+    const d = new Date();
+    return `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
+  const base = {
+    app: modalAppValue, msgType,
+    targetType: isSelectMode ? 'select' : 'all',
+    allSubTarget: isSelectMode ? null : allSubTarget,
+    targetStores: isSelectMode ? [...selected] : [],
+    title, body, timing, schedDate, schedTime, schedAt,
+  };
+
+  if (modalMode === 'register') {
+    pushList.unshift({
+      id: nextId++,
+      status: timing === 'sched' ? 'sched' : 'done',
+      ...base,
+      sentAt: timing === 'now' ? nowStr() : '-',
+      regAt: nowStr(),
+    });
+    showToast('앱푸쉬가 등록되었습니다.');
+  } else {
+    const idx = pushList.findIndex(p => p.id === currentItemId);
+    if (idx >= 0) pushList[idx] = { ...pushList[idx], ...base };
+    showToast('앱푸쉬가 수정되었습니다.');
+  }
+  closeModal();
+  renderTable();
 }
 
+// ── 더보기 메뉴 (삭제) ──
+let moreMenuActiveId = null;
+function toggleMoreMenu(event, id) {
+  event.stopPropagation();
+  const existing = document.getElementById('more-floating-menu');
+  if (existing) {
+    existing.remove();
+    if (moreMenuActiveId === id) { moreMenuActiveId = null; return; }
+  }
+  moreMenuActiveId = id;
+  const rect = event.currentTarget.getBoundingClientRect();
+  const menu = document.createElement('div');
+  menu.id = 'more-floating-menu';
+  menu.className = 'floating-dropdown';
+  menu.style.cssText = `top:${rect.bottom + 2}px;right:${window.innerWidth - rect.right}px;left:auto;min-width:100px;`;
+  menu.innerHTML = `<div class="more-menu-option danger" onclick="confirmDelete(${id})"><i class="ti ti-trash"></i> 삭제</div>`;
+  document.body.appendChild(menu);
+  setTimeout(() => document.addEventListener('click', closeMoreMenu, { once: true }), 0);
+}
+function closeMoreMenu() {
+  const el = document.getElementById('more-floating-menu');
+  if (el) el.remove();
+  moreMenuActiveId = null;
+}
+function confirmDelete(id) {
+  closeMoreMenu();
+  const item = pushList.find(p => p.id === id);
+  if (!item) return;
+  if (confirm(`"${displayTitle(item)}" 앱푸쉬를 삭제하시겠습니까?`)) {
+    pushList = pushList.filter(p => p.id !== id);
+    renderTable();
+    showToast('앱푸쉬가 삭제되었습니다.');
+  }
+}
+
+// ── 토스트 ──
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -505,18 +1249,19 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 2500);
 }
 
-function submitPush() {
-  const title = document.getElementById('title-input').value.trim();
-  const body = document.getElementById('body-input').value.trim();
-  const isSelectMode = document.getElementById('chip-select').classList.contains('active');
-  if (!title) { showToast('푸쉬 제목을 입력해주세요.'); return; }
-  if (!body) { showToast('푸쉬 내용을 입력해주세요.'); return; }
-  if (isSelectMode && selected.size === 0) { showToast('가맹점을 1개 이상 선택해주세요.'); return; }
-  closeModal();
-  showToast('앱푸쉬가 등록되었습니다.');
+// ── 사이드바 서브메뉴 토글 ──
+function toggleSubMenu(el) {
+  const sub = el.nextElementSibling;
+  if (!sub || !sub.classList.contains('nav-sub')) return;
+  el.classList.toggle('open');
+  sub.classList.toggle('open');
 }
 
-renderList(); renderSelected();
+// ── 초기 렌더 ──
+renderList();
+renderSelected();
+renderTable();
+updatePreview();
 </script>
 </body>
 </html>
