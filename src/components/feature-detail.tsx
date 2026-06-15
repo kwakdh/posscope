@@ -370,6 +370,12 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2 px-1">
+        <span className={`rounded-full px-2.5 py-1 text-xs font-bold tracking-wide ${badgeStyle}`}>
+          {badge}
+        </span>
+        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-ink-muted">
+          {VERSION_LABEL[policy.kind]}
+        </span>
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -379,6 +385,11 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
           placeholder="화면 제목을 입력하세요"
           className="flex-1 rounded-xl px-3 py-2 text-lg font-bold text-ink outline-none transition-colors hover:bg-white focus:bg-white focus:ring-2 focus:ring-brand/20 placeholder:font-normal placeholder:text-ink-muted"
         />
+        {(policy.author_name || formatDate(policy.updated_at)) && (
+          <span className="text-xs text-ink-muted">
+            {[policy.author_name, formatDate(policy.updated_at)].filter(Boolean).join(" · ")}
+          </span>
+        )}
         {onDelete && (
           <button
             type="button"
@@ -393,19 +404,6 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
       <div className="flex flex-col gap-4 rounded-3xl bg-surface p-5">
         <div className="flex gap-5">
           <div className="flex w-[55%] shrink-0 flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <span className={`rounded-full px-2.5 py-1 text-xs font-bold tracking-wide ${badgeStyle}`}>
-            {badge}
-          </span>
-          <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-ink-muted">
-            {VERSION_LABEL[policy.kind]}
-          </span>
-          {(policy.author_name || formatDate(policy.updated_at)) && (
-            <span className="text-xs text-ink-muted">
-              {[policy.author_name, formatDate(policy.updated_at)].filter(Boolean).join(" · ")}
-            </span>
-          )}
-        </div>
         {policy.wireframe_url ? (
           <div
             tabIndex={0}
