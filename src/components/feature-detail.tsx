@@ -194,6 +194,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName, canEdit
     policy.description_items.length ? policy.description_items : [""]
   );
   const [imageBadges, setImageBadges] = useState<ImageBadgeMark[]>(policy.image_badges ?? []);
+  const [isPlacingBadge, setIsPlacingBadge] = useState(false);
   const [isDrawingMode, setIsDrawingMode] = useState(false);
   const [drawRect, setDrawRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [showImageMenu, setShowImageMenu] = useState(false);
@@ -268,6 +269,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName, canEdit
         drawStartRef.current = null;
         setDrawRect(null);
         setIsDrawingMode(false);
+        setIsPlacingBadge(false);
       }
     }
 
@@ -369,13 +371,30 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName, canEdit
 
   function handleImageMouseDown(e: React.MouseEvent<HTMLDivElement>) {
     setShowImageMenu(false);
-    if (!canEdit || !isDrawingMode || !imageContainerRef.current) return;
-    e.preventDefault();
+    if (!canEdit || !imageContainerRef.current) return;
+
     const rect = imageContainerRef.current.getBoundingClientRect();
-    drawStartRef.current = {
-      x: ((e.clientX - rect.left) / rect.width) * 100,
-      y: ((e.clientY - rect.top) / rect.height) * 100,
-    };
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+    if (isPlacingBadge) {
+      e.preventDefault();
+      const badges = imageBadgesRef.current;
+      const nextNumber = badges.length ? Math.max(...badges.map((b) => b.number)) + 1 : 1;
+      const newBadge: ImageBadgeMark = { id: crypto.randomUUID(), number: nextNumber, x, y };
+      const nextBadges = [...badges, newBadge];
+      const nextDesc = [...descriptionItemsRef.current, ""];
+      setImageBadges(nextBadges);
+      setDescriptionItems(nextDesc);
+      persist({ image_badges: nextBadges, description_items: nextDesc });
+      setIsPlacingBadge(false);
+      return;
+    }
+
+    if (isDrawingMode) {
+      e.preventDefault();
+      drawStartRef.current = { x, y };
+    }
   }
 
   function removeImageBadge(id: string) {
@@ -478,7 +497,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName, canEdit
                 tabIndex={0}
                 onPaste={handlePaste}
                 onMouseDown={handleImageMouseDown}
-                className={`group relative overflow-hidden rounded-2xl shadow-sm outline-none focus:ring-2 focus:ring-brand/30 ${isDrawingMode ? "cursor-crosshair select-none" : ""}`}
+                className={`group relative overflow-hidden rounded-2xl shadow-sm outline-none focus:ring-2 focus:ring-brand/30 ${isDrawingMode || isPlacingBadge ? "cursor-crosshair select-none" : ""}`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={policy.wireframe_url} alt="와이어프레임" className="w-full object-contain" draggable={false} />
@@ -504,6 +523,9 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName, canEdit
                         <button type="button" onClick={() => { setShowImageMenu(false); inputRef.current?.click(); }} disabled={uploading} className="px-3 py-2 text-left text-ink transition-colors hover:bg-zinc-50 disabled:opacity-50">
                           {uploading ? "업로드 중..." : "이미지 교체"}
                         </button>
+                        <button type="button" onClick={() => { setShowImageMenu(false); setIsPlacingBadge(true); }} className="px-3 py-2 text-left text-ink transition-colors hover:bg-zinc-50">
+                          번호 찍기
+                        </button>
                         <button type="button" onClick={() => { setShowImageMenu(false); setIsDrawingMode(true); }} className="px-3 py-2 text-left text-ink transition-colors hover:bg-zinc-50">
                           영역 표시 추가
                         </button>
@@ -515,7 +537,14 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName, canEdit
                   </div>
                 )}
 
-                {/* Draw mode overlay */}
+                {/* Mode overlays */}
+                {isPlacingBadge && (
+                  <div className="pointer-events-none absolute inset-0 z-10 flex items-start justify-center bg-black/5 pt-3">
+                    <span className="rounded-full bg-black/60 px-3 py-1.5 text-xs font-bold text-white backdrop-blur-sm">
+                      클릭해서 번호를 찍으세요 · ESC 취소
+                    </span>
+                  </div>
+                )}
                 {isDrawingMode && (
                   <div className="pointer-events-none absolute inset-0 z-10 flex items-start justify-center bg-black/5 pt-3">
                     <span className="rounded-full bg-black/60 px-3 py-1.5 text-xs font-bold text-white backdrop-blur-sm">
