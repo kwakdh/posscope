@@ -23,6 +23,7 @@ type ProductData = {
 
 type ProductTabsProps = {
   products: ProductData[];
+  currentUserName: string;
 };
 
 type SidebarItem = {
@@ -90,7 +91,7 @@ function flattenLeaves(items: SidebarItem[]): SidebarItem[] {
   return items.flatMap((item) => (item.children ? [item, ...item.children] : [item]));
 }
 
-export function ProductTabs({ products }: ProductTabsProps) {
+export function ProductTabs({ products, currentUserName }: ProductTabsProps) {
   const [activeSlug, setActiveSlug] = useState(products[0]?.slug ?? "");
   const active = products.find((p) => p.slug === activeSlug);
 
@@ -231,7 +232,12 @@ export function ProductTabs({ products }: ProductTabsProps) {
                   {selected.itemType === "home" ? (
                     <p className="mt-4 text-sm text-zinc-400">첫화면입니다.</p>
                   ) : (
-                    <FeatureDetail key={selected.id} itemType={selected.itemType} itemId={selected.id} />
+                    <FeatureDetail
+                      key={selected.id}
+                      itemType={selected.itemType}
+                      itemId={selected.id}
+                      currentUserName={currentUserName}
+                    />
                   )}
                 </div>
               )}

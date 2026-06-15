@@ -51,7 +51,7 @@ export default async function Home() {
 
   return (
     <div className="flex flex-1 flex-col bg-zinc-50">
-      <header className="flex items-center justify-between border-b border-zinc-200 bg-[#F3F3F3] px-6 py-2">
+      <header className="flex items-center justify-between border-b border-zinc-200 bg-[#EDEDED] px-6 py-1">
         <Logo />
         <div className="flex items-center gap-4 text-sm text-zinc-600">
           <OnlineUsers
@@ -74,7 +74,7 @@ export default async function Home() {
         </div>
       </header>
 
-      <ProductTabs products={productsData} />
+      <ProductTabs products={productsData} currentUserName={profile?.name ?? user!.email ?? ""} />
     </div>
   );
 }

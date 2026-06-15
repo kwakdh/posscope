@@ -14,14 +14,22 @@ type Policy = {
   content: string;
   wireframe_url: string | null;
   sort_order: number;
+  author_name: string | null;
+  updated_at: string | null;
 };
 
 type FeatureDetailProps = {
   itemType: ItemType;
   itemId: string;
+  currentUserName: string;
 };
 
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+
+const VERSION_LABEL: Record<Policy["kind"], string> = {
+  current: "v1.0",
+  proposal: "v0.1",
+};
 
 function emptyPolicy(itemType: ItemType, itemId: string, kind: Policy["kind"]): Policy {
   return {
@@ -33,10 +41,18 @@ function emptyPolicy(itemType: ItemType, itemId: string, kind: Policy["kind"]): 
     content: "",
     wireframe_url: null,
     sort_order: 0,
+    author_name: null,
+    updated_at: null,
   };
 }
 
-export function FeatureDetail({ itemType, itemId }: FeatureDetailProps) {
+function formatDate(value: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}`;
+}
+
+export function FeatureDetail({ itemType, itemId, currentUserName }: FeatureDetailProps) {
   const [current, setCurrent] = useState<Policy | null>(null);
   const [proposals, setProposals] = useState<Policy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,7 +85,13 @@ export function FeatureDetail({ itemType, itemId }: FeatureDetailProps) {
     const supabase = createClient();
     const { data, error } = await supabase
       .from("policies")
-      .insert({ item_type: itemType, item_id: itemId, kind: "proposal" })
+      .insert({
+        item_type: itemType,
+        item_id: itemId,
+        kind: "proposal",
+        author_name: currentUserName,
+        updated_at: new Date().toISOString(),
+      })
       .select("*")
       .single();
 
@@ -89,8 +111,8 @@ export function FeatureDetail({ itemType, itemId }: FeatureDetailProps) {
   }
 
   return (
-    <div className="mt-4 flex flex-col gap-6">
-      <PolicyCard policy={current} badge="현재" onSaved={setCurrent} />
+    <div className="mt-6 flex flex-col gap-5">
+      <PolicyCard policy={current} badge="현행" onSaved={setCurrent} currentUserName={currentUserName} />
 
       {proposals.map((proposal) => (
         <PolicyCard
@@ -101,13 +123,14 @@ export function FeatureDetail({ itemType, itemId }: FeatureDetailProps) {
             setProposals((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
           }
           onDelete={() => handleDeleteProposal(proposal.id)}
+          currentUserName={currentUserName}
         />
       ))}
 
       <button
         type="button"
         onClick={handleAddProposal}
-        className="self-start rounded-lg border border-dashed border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-500 hover:border-zinc-400 hover:text-zinc-700"
+        className="self-start rounded-2xl border border-dashed border-zinc-300 px-4 py-2.5 text-sm font-medium text-zinc-500 transition-colors hover:border-brand hover:bg-brand/5 hover:text-brand"
       >
         + 신규 기획 추가
       </button>
@@ -117,23 +140,27 @@ export function FeatureDetail({ itemType, itemId }: FeatureDetailProps) {
 
 type PolicyCardProps = {
   policy: Policy;
-  badge: "현재" | "신규 기획";
+  badge: "현행" | "신규 기획";
   onSaved: (policy: Policy) => void;
   onDelete?: () => void;
+  currentUserName: string;
 };
 
-function PolicyCard({ policy, badge, onSaved, onDelete }: PolicyCardProps) {
+function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: PolicyCardProps) {
   const [title, setTitle] = useState(policy.title);
   const [content, setContent] = useState(policy.content);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
+  const [savedImages, setSavedImages] = useState<{ name: string; url: string }[] | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const badgeStyle =
-    badge === "현재" ? "bg-zinc-100 text-zinc-600" : "bg-amber-50 text-amber-600";
+    badge === "현행" ? "bg-zinc-100 text-zinc-500" : "bg-brand/10 text-brand";
 
   async function persist(changes: Partial<Pick<Policy, "title" | "content" | "wireframe_url">>) {
     const supabase = createClient();
+    const stamp = { author_name: currentUserName, updated_at: new Date().toISOString() };
 
     if (!policy.id) {
       const { data, error: insertError } = await supabase
@@ -145,6 +172,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete }: PolicyCardProps) {
           title,
           content,
           ...changes,
+          ...stamp,
         })
         .select("*")
         .single();
@@ -157,7 +185,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete }: PolicyCardProps) {
 
     const { data, error: updateError } = await supabase
       .from("policies")
-      .update(changes)
+      .update({ ...changes, ...stamp })
       .eq("id", policy.id)
       .select("*")
       .single();
@@ -171,7 +199,20 @@ function PolicyCard({ policy, badge, onSaved, onDelete }: PolicyCardProps) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
+    await uploadFile(file);
+  }
 
+  function handlePaste(e: React.ClipboardEvent<HTMLDivElement>) {
+    const file = Array.from(e.clipboardData.items)
+      .find((item) => item.type.startsWith("image/"))
+      ?.getAsFile();
+
+    if (!file) return;
+    e.preventDefault();
+    void uploadFile(file);
+  }
+
+  async function uploadFile(file: File) {
     if (!file.type.startsWith("image/")) {
       setError("이미지 파일만 업로드할 수 있습니다.");
       return;
@@ -228,7 +269,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete }: PolicyCardProps) {
 
     const { data: updated, error: updateError } = await supabase
       .from("policies")
-      .update({ wireframe_url: wireframeUrl })
+      .update({ wireframe_url: wireframeUrl, author_name: currentUserName, updated_at: new Date().toISOString() })
       .eq("id", policyId)
       .select("*")
       .single();
@@ -242,41 +283,112 @@ function PolicyCard({ policy, badge, onSaved, onDelete }: PolicyCardProps) {
     setUploading(false);
   }
 
+  async function handleRemoveWireframe() {
+    setError(null);
+    await persist({ wireframe_url: null });
+  }
+
+  async function handleOpenPicker() {
+    setError(null);
+    setShowPicker(true);
+
+    const supabase = createClient();
+    const folder = `${policy.item_type}/${policy.item_id}`;
+    const { data, error: listError } = await supabase.storage.from("wireframes").list(folder, {
+      sortBy: { column: "created_at", order: "desc" },
+    });
+
+    if (listError) {
+      setError(listError.message);
+      setSavedImages([]);
+      return;
+    }
+
+    const images = (data ?? [])
+      .filter((item) => item.id)
+      .map((item) => {
+        const path = `${folder}/${item.name}`;
+        const { data: urlData } = supabase.storage.from("wireframes").getPublicUrl(path);
+        return { name: item.name, url: urlData.publicUrl };
+      });
+
+    setSavedImages(images);
+  }
+
+  async function handlePickSavedImage(url: string) {
+    setShowPicker(false);
+    setError(null);
+    await persist({ wireframe_url: `${url}?v=${Date.now()}` });
+  }
+
   return (
-    <div className="flex gap-4 rounded-xl border border-zinc-200 bg-white p-4">
-      <div className="flex w-[55%] shrink-0 flex-col gap-2">
+    <div className="flex gap-5 rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
+      <div className="flex w-[55%] shrink-0 flex-col gap-3">
         <div className="flex items-center gap-2">
-          <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${badgeStyle}`}>{badge}</span>
+          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold tracking-wide ${badgeStyle}`}>
+            {badge}
+          </span>
+          <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-500">
+            {VERSION_LABEL[policy.kind]}
+          </span>
+          {(policy.author_name || formatDate(policy.updated_at)) && (
+            <span className="text-xs text-zinc-400">
+              {[policy.author_name, formatDate(policy.updated_at)].filter(Boolean).join(" · ")}
+            </span>
+          )}
           {onDelete && (
             <button
               type="button"
               onClick={onDelete}
-              className="ml-auto text-xs text-zinc-400 hover:text-red-500"
+              className="ml-auto rounded-full px-2 py-1 text-xs text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500"
             >
               삭제
             </button>
           )}
         </div>
         {policy.wireframe_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={policy.wireframe_url}
-            alt="와이어프레임"
-            className="rounded-lg border border-zinc-200 object-contain"
-          />
+          <div
+            tabIndex={0}
+            onPaste={handlePaste}
+            className="group relative overflow-hidden rounded-xl border border-zinc-200/80 shadow-sm outline-none focus:ring-2 focus:ring-brand/30"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={policy.wireframe_url} alt="와이어프레임" className="w-full object-contain" />
+            <button
+              type="button"
+              onClick={handleRemoveWireframe}
+              className="absolute right-2 top-2 rounded-full bg-black/45 px-2.5 py-1 text-xs font-medium text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/65 group-hover:opacity-100"
+            >
+              이미지 삭제
+            </button>
+          </div>
         ) : (
-          <div className="flex aspect-[4/3] items-center justify-center rounded-lg border border-dashed border-zinc-300 text-sm text-zinc-400">
-            와이어프레임 이미지가 없습니다.
+          <div
+            tabIndex={0}
+            onPaste={handlePaste}
+            className="flex aspect-[4/3] flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-zinc-300 bg-zinc-50/60 text-sm text-zinc-400 outline-none transition-colors focus:border-brand/40 focus:bg-brand/5 focus:ring-2 focus:ring-brand/20"
+          >
+            <span>와이어프레임 이미지가 없습니다.</span>
+            <span className="text-xs text-zinc-400">클릭 후 Ctrl+V로 캡쳐본을 붙여넣을 수 있어요.</span>
           </div>
         )}
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={uploading}
-          className="self-start rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
-        >
-          {uploading ? "업로드 중..." : "이미지 업로드"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+            className="self-start rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:border-zinc-300 hover:bg-zinc-50 disabled:opacity-50"
+          >
+            {uploading ? "업로드 중..." : "이미지 업로드"}
+          </button>
+          <button
+            type="button"
+            onClick={handleOpenPicker}
+            className="self-start rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:border-zinc-300 hover:bg-zinc-50"
+          >
+            저장된 이미지 불러오기
+          </button>
+        </div>
         <input
           ref={inputRef}
           type="file"
@@ -284,10 +396,52 @@ function PolicyCard({ policy, badge, onSaved, onDelete }: PolicyCardProps) {
           className="hidden"
           onChange={handleFileChange}
         />
-        {error && <p className="text-xs text-red-600">{error}</p>}
+        {error && <p className="text-xs text-red-500">{error}</p>}
+
+        {showPicker && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
+            onClick={() => setShowPicker(false)}
+          >
+            <div
+              className="max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-zinc-800">저장된 이미지 불러오기</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowPicker(false)}
+                  className="rounded-full px-2 py-1 text-xs text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                >
+                  닫기
+                </button>
+              </div>
+              {savedImages === null ? (
+                <p className="text-sm text-zinc-400">불러오는 중...</p>
+              ) : savedImages.length === 0 ? (
+                <p className="text-sm text-zinc-400">저장된 이미지가 없습니다.</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-3">
+                  {savedImages.map((image) => (
+                    <button
+                      key={image.name}
+                      type="button"
+                      onClick={() => handlePickSavedImage(image.url)}
+                      className="overflow-hidden rounded-xl border border-zinc-200 shadow-sm transition-all hover:border-brand hover:shadow-md"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={image.url} alt={image.name} className="aspect-[4/3] w-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="flex flex-1 flex-col gap-2">
+      <div className="flex flex-1 flex-col gap-3">
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -295,7 +449,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete }: PolicyCardProps) {
             if (title !== policy.title) persist({ title });
           }}
           placeholder="화면 제목"
-          className="rounded-lg border border-zinc-200 px-3 py-2 text-sm font-medium outline-none focus:border-zinc-400"
+          className="rounded-xl border border-zinc-200 px-3.5 py-2.5 text-sm font-medium outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/20"
         />
         <textarea
           value={content}
@@ -304,7 +458,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete }: PolicyCardProps) {
             if (content !== policy.content) persist({ content });
           }}
           placeholder="정책 및 디스크립션을 입력하세요."
-          className="min-h-[240px] flex-1 resize-none rounded-lg border border-zinc-200 px-3 py-2 text-sm leading-relaxed outline-none focus:border-zinc-400"
+          className="min-h-[240px] flex-1 resize-none rounded-xl border border-zinc-200 px-3.5 py-2.5 text-sm leading-relaxed outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/20"
         />
       </div>
     </div>
