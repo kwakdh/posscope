@@ -33,6 +33,7 @@ type FeatureDetailProps = {
   itemType: ItemType;
   itemId: string;
   currentUserName: string;
+  canEdit: boolean;
 };
 
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
@@ -67,7 +68,7 @@ function formatDate(value: string | null): string | null {
   return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}`;
 }
 
-export function FeatureDetail({ itemType, itemId, currentUserName }: FeatureDetailProps) {
+export function FeatureDetail({ itemType, itemId, currentUserName, canEdit }: FeatureDetailProps) {
   const [current, setCurrent] = useState<Policy | null>(null);
   const [proposals, setProposals] = useState<Policy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -158,13 +159,15 @@ export function FeatureDetail({ itemType, itemId, currentUserName }: FeatureDeta
             신규 기획{proposals.length > 1 ? ` ${index + 1}` : ""}
           </button>
         ))}
-        <button
-          type="button"
-          onClick={handleAddProposal}
-          className="rounded-full px-4 py-2 text-sm font-bold text-ink-muted transition-colors hover:text-brand"
-        >
-          + 추가
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={handleAddProposal}
+            className="rounded-full px-4 py-2 text-sm font-bold text-ink-muted transition-colors hover:text-brand"
+          >
+            + 추가
+          </button>
+        )}
       </div>
 
       {selectedPolicy && (
@@ -177,8 +180,9 @@ export function FeatureDetail({ itemType, itemId, currentUserName }: FeatureDeta
               ? setCurrent
               : (updated) => setProposals((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
           }
-          onDelete={selectedTab !== "current" ? () => handleDeleteProposal(selectedPolicy.id) : undefined}
+          onDelete={canEdit && selectedTab !== "current" ? () => handleDeleteProposal(selectedPolicy.id) : undefined}
           currentUserName={currentUserName}
+          canEdit={canEdit}
         />
       )}
     </div>
@@ -191,9 +195,10 @@ type PolicyCardProps = {
   onSaved: (policy: Policy) => void;
   onDelete?: () => void;
   currentUserName: string;
+  canEdit: boolean;
 };
 
-function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: PolicyCardProps) {
+function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName, canEdit }: PolicyCardProps) {
   const [title, setTitle] = useState(policy.title);
   const [policyNote, setPolicyNote] = useState(policy.policy_note);
   const [uiNote, setUiNote] = useState(policy.ui_note);
@@ -284,6 +289,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
   }
 
   function handlePaste(e: React.ClipboardEvent<HTMLDivElement>) {
+    if (!canEdit) return;
     const file = Array.from(e.clipboardData.items)
       .find((item) => item.type.startsWith("image/"))
       ?.getAsFile();
@@ -375,7 +381,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
 
   function handleImageClick(e: React.MouseEvent<HTMLDivElement>) {
     setShowImageMenu(false);
-    if (!isPlacingBadge || !imageContainerRef.current) return;
+    if (!canEdit || !isPlacingBadge || !imageContainerRef.current) return;
 
     const rect = imageContainerRef.current.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;
@@ -470,8 +476,9 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
           onBlur={() => {
             if (title !== policy.title) persist({ title });
           }}
+          readOnly={!canEdit}
           placeholder="화면 제목을 입력하세요"
-          className="flex-1 rounded-xl px-3 py-2 text-lg font-bold text-ink outline-none transition-colors hover:bg-white focus:bg-white focus:ring-2 focus:ring-brand/20 placeholder:font-normal placeholder:text-ink-muted"
+          className={`flex-1 rounded-xl px-3 py-2 text-lg font-bold text-ink outline-none transition-colors placeholder:font-normal placeholder:text-ink-muted ${canEdit ? "hover:bg-white focus:bg-white focus:ring-2 focus:ring-brand/20" : ""}`}
         />
         {(policy.author_name || formatDate(policy.updated_at)) && (
           <span className="text-xs text-ink-muted">
@@ -503,57 +510,59 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={policy.wireframe_url} alt="와이어프레임" className="w-full object-contain" />
 
-            <div className="absolute right-2 top-2">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowImageMenu((v) => !v);
-                }}
-                aria-label="이미지 설정"
-                className={`flex h-8 w-8 items-center justify-center rounded-full bg-black/45 text-sm text-white backdrop-blur-sm transition-opacity hover:bg-black/65 ${showImageMenu ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-              >
-                ⚙️
-              </button>
-              {showImageMenu && (
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  className="absolute right-0 top-9 z-20 flex w-36 flex-col overflow-hidden rounded-xl bg-white py-1 text-sm font-bold shadow-lg"
+            {canEdit && (
+              <div className="absolute right-2 top-2">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowImageMenu((v) => !v);
+                  }}
+                  aria-label="이미지 설정"
+                  className={`flex h-8 w-8 items-center justify-center rounded-full bg-black/45 text-sm text-white backdrop-blur-sm transition-opacity hover:bg-black/65 ${showImageMenu ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
                 >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowImageMenu(false);
-                      inputRef.current?.click();
-                    }}
-                    disabled={uploading}
-                    className="px-3 py-2 text-left text-ink transition-colors hover:bg-zinc-50 disabled:opacity-50"
+                  ⚙️
+                </button>
+                {showImageMenu && (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute right-0 top-9 z-20 flex w-36 flex-col overflow-hidden rounded-xl bg-white py-1 text-sm font-bold shadow-lg"
                   >
-                    {uploading ? "업로드 중..." : "이미지 교체"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowImageMenu(false);
-                      setIsPlacingBadge(true);
-                    }}
-                    className="px-3 py-2 text-left text-ink transition-colors hover:bg-zinc-50"
-                  >
-                    번호배지 추가
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowImageMenu(false);
-                      handleRemoveWireframe();
-                    }}
-                    className="px-3 py-2 text-left text-red-500 transition-colors hover:bg-red-50"
-                  >
-                    이미지 삭제
-                  </button>
-                </div>
-              )}
-            </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowImageMenu(false);
+                        inputRef.current?.click();
+                      }}
+                      disabled={uploading}
+                      className="px-3 py-2 text-left text-ink transition-colors hover:bg-zinc-50 disabled:opacity-50"
+                    >
+                      {uploading ? "업로드 중..." : "이미지 교체"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowImageMenu(false);
+                        setIsPlacingBadge(true);
+                      }}
+                      className="px-3 py-2 text-left text-ink transition-colors hover:bg-zinc-50"
+                    >
+                      번호배지 추가
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowImageMenu(false);
+                        handleRemoveWireframe();
+                      }}
+                      className="px-3 py-2 text-left text-red-500 transition-colors hover:bg-red-50"
+                    >
+                      이미지 삭제
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {isPlacingBadge && (
               <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/10 text-sm font-bold text-white">
@@ -564,13 +573,17 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
             {imageBadges.map((b) => (
               <div
                 key={b.id}
-                onMouseDown={(e) => handleBadgeMouseDown(e, b.id)}
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  setEditingBadgeId(b.id);
-                }}
+                onMouseDown={canEdit ? (e) => handleBadgeMouseDown(e, b.id) : undefined}
+                onDoubleClick={
+                  canEdit
+                    ? (e) => {
+                        e.stopPropagation();
+                        setEditingBadgeId(b.id);
+                      }
+                    : undefined
+                }
                 style={{ left: `${b.x}%`, top: `${b.y}%` }}
-                className="group/badge absolute flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 cursor-move select-none items-center justify-center rounded-md bg-red-500 text-sm font-bold text-white shadow-md"
+                className={`group/badge absolute flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 select-none items-center justify-center rounded-md bg-red-500 text-sm font-bold text-white shadow-md ${canEdit ? "cursor-move" : ""}`}
               >
                 {editingBadgeId === b.id ? (
                   <input
@@ -592,38 +605,44 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
                 ) : (
                   b.number
                 )}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeImageBadge(b.id);
-                  }}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-white text-[10px] text-red-500 opacity-0 shadow transition-opacity group-hover/badge:opacity-100"
-                >
-                  ✕
-                </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeImageBadge(b.id);
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-white text-[10px] text-red-500 opacity-0 shadow transition-opacity group-hover/badge:opacity-100"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
             ))}
           </div>
         ) : (
           <div
-            tabIndex={0}
+            tabIndex={canEdit ? 0 : -1}
             onPaste={handlePaste}
-            onClick={() => inputRef.current?.click()}
-            className="flex aspect-[4/3] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-zinc-200 bg-white text-sm font-medium text-ink-muted outline-none transition-colors hover:border-brand/40 hover:bg-brand/5 focus:border-brand/40 focus:bg-brand/5 focus:ring-2 focus:ring-brand/20"
+            onClick={canEdit ? () => inputRef.current?.click() : undefined}
+            className={`flex aspect-[4/3] flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-zinc-200 bg-white text-sm font-medium text-ink-muted outline-none transition-colors ${canEdit ? "cursor-pointer hover:border-brand/40 hover:bg-brand/5 focus:border-brand/40 focus:bg-brand/5 focus:ring-2 focus:ring-brand/20" : ""}`}
           >
             <span>{uploading ? "업로드 중..." : "와이어프레임 이미지가 없습니다."}</span>
-            <span className="text-xs text-ink-muted">클릭해서 업로드하거나 Ctrl+V로 캡쳐본을 붙여넣을 수 있어요.</span>
+            {canEdit && (
+              <span className="text-xs text-ink-muted">클릭해서 업로드하거나 Ctrl+V로 캡쳐본을 붙여넣을 수 있어요.</span>
+            )}
           </div>
         )}
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={handleFileChange}
-        />
+        {canEdit && (
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+        )}
         {error && <p className="text-xs text-red-500">{error}</p>}
       </div>
 
@@ -631,13 +650,15 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
         <div className="flex max-h-[360px] flex-col gap-2 overflow-y-auto rounded-2xl bg-white p-4">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-ink-muted">디스크립션</span>
-            <button
-              type="button"
-              onClick={addDescriptionRow}
-              className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-ink-muted transition-colors hover:bg-zinc-200 hover:text-ink"
-            >
-              + 행 추가
-            </button>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={addDescriptionRow}
+                className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-ink-muted transition-colors hover:bg-zinc-200 hover:text-ink"
+              >
+                + 행 추가
+              </button>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             {descriptionItems.map((item, index) => (
@@ -649,22 +670,25 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
                   value={item}
                   onChange={(e) => updateDescriptionRow(index, e.target.value)}
                   onBlur={handleDescriptionBlur}
+                  readOnly={!canEdit}
                   placeholder="디스크립션을 입력하세요."
                   className="min-h-[60px] flex-1 resize-none rounded-xl bg-surface px-3 py-2 text-sm leading-relaxed text-ink outline-none transition-colors focus:ring-2 focus:ring-brand/20"
                 />
-                <button
-                  type="button"
-                  onClick={() => removeDescriptionRow(index)}
-                  className="self-start rounded-full px-2 py-1 text-xs font-bold text-ink-muted transition-colors hover:bg-red-50 hover:text-red-500"
-                >
-                  ✕
-                </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => removeDescriptionRow(index)}
+                    className="self-start rounded-full px-2 py-1 text-xs font-bold text-ink-muted transition-colors hover:bg-red-50 hover:text-red-500"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
             ))}
           </div>
         </div>
 
-        {(!showPolicy || !showUiNote || !showConsideration) && (
+        {canEdit && (!showPolicy || !showUiNote || !showConsideration) && (
           <div className="flex gap-2">
             {!showPolicy && (
               <button
@@ -700,13 +724,15 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
           <div className="rounded-2xl bg-red-50 p-4">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-xs font-bold text-red-500">정책</span>
-              <button
-                type="button"
-                onClick={() => setShowPolicy(false)}
-                className="rounded-full px-2 py-0.5 text-xs font-bold text-red-300 transition-colors hover:bg-red-100 hover:text-red-500"
-              >
-                ✕
-              </button>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => setShowPolicy(false)}
+                  className="rounded-full px-2 py-0.5 text-xs font-bold text-red-300 transition-colors hover:bg-red-100 hover:text-red-500"
+                >
+                  ✕
+                </button>
+              )}
             </div>
             <textarea
               value={policyNote}
@@ -714,6 +740,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
               onBlur={() => {
                 if (policyNote !== policy.policy_note) persist({ policy_note: policyNote });
               }}
+              readOnly={!canEdit}
               placeholder="정책을 입력하세요."
               className="min-h-[80px] w-full resize-none bg-transparent text-sm leading-relaxed text-red-600 outline-none placeholder:text-red-300"
             />
@@ -724,13 +751,15 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
           <div className="rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50 p-4">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-sm font-bold text-amber-600">★ UI 참고사항</span>
-              <button
-                type="button"
-                onClick={() => setShowUiNote(false)}
-                className="rounded-full px-2 py-0.5 text-xs font-bold text-amber-400 transition-colors hover:bg-amber-100 hover:text-amber-600"
-              >
-                ✕
-              </button>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => setShowUiNote(false)}
+                  className="rounded-full px-2 py-0.5 text-xs font-bold text-amber-400 transition-colors hover:bg-amber-100 hover:text-amber-600"
+                >
+                  ✕
+                </button>
+              )}
             </div>
             <textarea
               value={uiNote}
@@ -738,6 +767,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
               onBlur={() => {
                 if (uiNote !== policy.ui_note) persist({ ui_note: uiNote });
               }}
+              readOnly={!canEdit}
               placeholder="내용을 입력하세요."
               className="min-h-[80px] w-full resize-none bg-transparent text-sm leading-relaxed text-amber-800 outline-none placeholder:text-amber-300"
             />
@@ -748,13 +778,15 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
           <div className="rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50 p-4">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-sm font-bold text-emerald-600">★ 고려사항</span>
-              <button
-                type="button"
-                onClick={() => setShowConsideration(false)}
-                className="rounded-full px-2 py-0.5 text-xs font-bold text-emerald-400 transition-colors hover:bg-emerald-100 hover:text-emerald-600"
-              >
-                ✕
-              </button>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => setShowConsideration(false)}
+                  className="rounded-full px-2 py-0.5 text-xs font-bold text-emerald-400 transition-colors hover:bg-emerald-100 hover:text-emerald-600"
+                >
+                  ✕
+                </button>
+              )}
             </div>
             <textarea
               value={considerationNote}
@@ -762,6 +794,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
               onBlur={() => {
                 if (considerationNote !== policy.consideration_note) persist({ consideration_note: considerationNote });
               }}
+              readOnly={!canEdit}
               placeholder="내용을 입력하세요."
               className="min-h-[80px] w-full resize-none bg-transparent text-sm leading-relaxed text-emerald-800 outline-none placeholder:text-emerald-300"
             />

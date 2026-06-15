@@ -24,6 +24,7 @@ type ProductData = {
 type ProductTabsProps = {
   products: ProductData[];
   currentUserName: string;
+  canEdit: boolean;
 };
 
 type SidebarItem = {
@@ -91,7 +92,7 @@ function flattenLeaves(items: SidebarItem[]): SidebarItem[] {
   return items.flatMap((item) => (item.children ? [item, ...item.children] : [item]));
 }
 
-export function ProductTabs({ products, currentUserName }: ProductTabsProps) {
+export function ProductTabs({ products, currentUserName, canEdit }: ProductTabsProps) {
   const [activeSlug, setActiveSlug] = useState(products[0]?.slug ?? "");
   const active = products.find((p) => p.slug === activeSlug);
 
@@ -239,6 +240,7 @@ export function ProductTabs({ products, currentUserName }: ProductTabsProps) {
                       itemType={selected.itemType}
                       itemId={selected.id}
                       currentUserName={currentUserName}
+                      canEdit={canEdit}
                     />
                   )}
                 </div>

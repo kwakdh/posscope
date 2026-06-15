@@ -20,6 +20,7 @@ export default async function Home() {
     .single();
 
   const isAdmin = ADMIN_EMAILS.includes(user?.email ?? "") || profile?.role === "admin";
+  const canEdit = isAdmin || profile?.role === "planner";
 
   const { data: products } = await supabase
     .from("products")
@@ -74,7 +75,7 @@ export default async function Home() {
         </div>
       </header>
 
-      <ProductTabs products={productsData} currentUserName={profile?.name ?? user!.email ?? ""} />
+      <ProductTabs products={productsData} currentUserName={profile?.name ?? user!.email ?? ""} canEdit={canEdit} />
     </div>
   );
 }
