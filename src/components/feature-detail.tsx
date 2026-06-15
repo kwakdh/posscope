@@ -76,10 +76,10 @@ function formatDate(value: string | null): string | null {
 }
 
 export function FeatureDetail({ itemType, itemId, currentUserName, canEdit }: FeatureDetailProps) {
-  const [current, setCurrent] = useState<Policy | null>(null);
+  const [currentPolicies, setCurrentPolicies] = useState<Policy[]>([]);
   const [proposals, setProposals] = useState<Policy[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedTab, setSelectedTab] = useState<"current" | string>("current");
+  const [activeTab, setActiveTab] = useState<"current" | "proposal">("current");
 
   useEffect(() => {
     let active = true;
@@ -94,81 +94,101 @@ export function FeatureDetail({ itemType, itemId, currentUserName, canEdit }: Fe
       .then(({ data }) => {
         if (!active) return;
         const rows = (data ?? []) as Policy[];
-        setCurrent(rows.find((row) => row.kind === "current") ?? emptyPolicy(itemType, itemId, "current"));
-        setProposals(rows.filter((row) => row.kind === "proposal"));
+        const currents = rows.filter((r) => r.kind === "current");
+        setCurrentPolicies(currents.length > 0 ? currents : [emptyPolicy(itemType, itemId, "current")]);
+        setProposals(rows.filter((r) => r.kind === "proposal"));
         setLoading(false);
       });
     return () => { active = false; };
   }, [itemType, itemId]);
 
-  async function handleAddProposal() {
+  async function handleAddSection(kind: "current" | "proposal") {
     const supabase = createClient();
     const { data, error } = await supabase
       .from("policies")
-      .insert({ item_type: itemType, item_id: itemId, kind: "proposal", author_name: currentUserName, updated_at: new Date().toISOString() })
+      .insert({ item_type: itemType, item_id: itemId, kind, author_name: currentUserName, updated_at: new Date().toISOString() })
       .select("*")
       .single();
     if (!error && data) {
-      setProposals((prev) => [...prev, data as Policy]);
-      setSelectedTab((data as Policy).id);
+      if (kind === "current") setCurrentPolicies((prev) => [...prev, data as Policy]);
+      else setProposals((prev) => [...prev, data as Policy]);
     }
   }
 
-  async function handleDeleteProposal(id: string) {
+  async function handleDeleteSection(kind: "current" | "proposal", id: string) {
     const supabase = createClient();
     await supabase.from("policies").delete().eq("id", id);
-    setProposals((prev) => prev.filter((p) => p.id !== id));
-    if (selectedTab === id) setSelectedTab("current");
+    if (kind === "current") {
+      setCurrentPolicies((prev) => {
+        const next = prev.filter((p) => p.id !== id);
+        return next.length > 0 ? next : [emptyPolicy(itemType, itemId, "current")];
+      });
+    } else {
+      setProposals((prev) => prev.filter((p) => p.id !== id));
+    }
   }
 
-  if (loading || !current) {
-    return <p className="mt-4 text-sm text-zinc-400">불러오는 중...</p>;
-  }
+  if (loading) return <p className="mt-4 text-sm text-zinc-400">불러오는 중...</p>;
 
-  const selectedPolicy = selectedTab === "current" ? current : proposals.find((p) => p.id === selectedTab);
+  const visiblePolicies = activeTab === "current" ? currentPolicies : proposals;
+  const badge = activeTab === "current" ? "현행" : "신규 기획";
 
   return (
-    <div className="mt-6 flex flex-col gap-5">
-      <div className="flex items-center gap-1 rounded-full bg-zinc-100 p-1">
+    <div className="mt-6 flex flex-col gap-6">
+      {/* 탭 */}
+      <div className="flex items-center gap-1 rounded-full bg-zinc-100 p-1 self-start">
         <button
           type="button"
-          onClick={() => setSelectedTab("current")}
-          className={`rounded-full px-4 py-2 text-sm font-bold transition-colors ${selectedTab === "current" ? "bg-white text-ink shadow-sm" : "text-ink-muted hover:text-ink"}`}
+          onClick={() => setActiveTab("current")}
+          className={`rounded-full px-4 py-2 text-sm font-bold transition-colors ${activeTab === "current" ? "bg-white text-ink shadow-sm" : "text-ink-muted hover:text-ink"}`}
         >
           현행
         </button>
-        {proposals.map((proposal, index) => (
-          <button
-            key={proposal.id}
-            type="button"
-            onClick={() => setSelectedTab(proposal.id)}
-            className={`rounded-full px-4 py-2 text-sm font-bold transition-colors ${selectedTab === proposal.id ? "bg-white text-ink shadow-sm" : "text-ink-muted hover:text-ink"}`}
-          >
-            신규 기획{proposals.length > 1 ? ` ${index + 1}` : ""}
-          </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("proposal")}
+          className={`rounded-full px-4 py-2 text-sm font-bold transition-colors ${activeTab === "proposal" ? "bg-white text-ink shadow-sm" : "text-ink-muted hover:text-ink"}`}
+        >
+          신규 기획
+        </button>
+      </div>
+
+      {/* 섹션 카드 목록 */}
+      <div className="flex flex-col gap-8">
+        {activeTab === "proposal" && visiblePolicies.length === 0 && (
+          <p className="px-1 text-sm text-ink-muted">신규 기획이 없습니다. 아래 버튼으로 추가하세요.</p>
+        )}
+
+        {visiblePolicies.map((policy) => (
+          <PolicyCard
+            key={policy.id || "empty"}
+            policy={policy}
+            badge={badge}
+            onSaved={(updated) => {
+              if (activeTab === "current") {
+                setCurrentPolicies((prev) =>
+                  prev.map((p) => (p.id && p.id === updated.id) || !p.id ? updated : p)
+                );
+              } else {
+                setProposals((prev) => prev.map((p) => p.id === updated.id ? updated : p));
+              }
+            }}
+            onDelete={canEdit && !!policy.id ? () => handleDeleteSection(activeTab, policy.id) : undefined}
+            currentUserName={currentUserName}
+            canEdit={canEdit}
+          />
         ))}
+
         {canEdit && (
-          <button type="button" onClick={handleAddProposal} className="rounded-full px-4 py-2 text-sm font-bold text-ink-muted transition-colors hover:text-brand">
-            + 추가
+          <button
+            type="button"
+            onClick={() => handleAddSection(activeTab)}
+            className="flex items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-zinc-200 py-5 text-sm font-bold text-ink-muted transition-colors hover:border-brand/40 hover:text-brand"
+          >
+            + 섹션 추가
           </button>
         )}
       </div>
-
-      {selectedPolicy && (
-        <PolicyCard
-          key={selectedPolicy.id}
-          policy={selectedPolicy}
-          badge={selectedTab === "current" ? "현행" : "신규 기획"}
-          onSaved={
-            selectedTab === "current"
-              ? setCurrent
-              : (updated) => setProposals((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
-          }
-          onDelete={canEdit && selectedTab !== "current" ? () => handleDeleteProposal(selectedPolicy.id) : undefined}
-          currentUserName={currentUserName}
-          canEdit={canEdit}
-        />
-      )}
     </div>
   );
 }
