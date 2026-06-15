@@ -5,6 +5,13 @@ import { createClient } from "@/lib/supabase/client";
 
 type ItemType = "category" | "feature";
 
+type ImageBadgeMark = {
+  id: string;
+  number: number;
+  x: number;
+  y: number;
+};
+
 type Policy = {
   id: string;
   item_type: ItemType;
@@ -16,6 +23,7 @@ type Policy = {
   consideration_note: string;
   description_items: string[];
   wireframe_url: string | null;
+  image_badges: ImageBadgeMark[];
   sort_order: number;
   author_name: string | null;
   updated_at: string | null;
@@ -46,6 +54,7 @@ function emptyPolicy(itemType: ItemType, itemId: string, kind: Policy["kind"]): 
     consideration_note: "",
     description_items: [],
     wireframe_url: null,
+    image_badges: [],
     sort_order: 0,
     author_name: null,
     updated_at: null,
@@ -195,9 +204,20 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
   const [descriptionItems, setDescriptionItems] = useState<string[]>(
     policy.description_items.length ? policy.description_items : [""]
   );
+  const [imageBadges, setImageBadges] = useState<ImageBadgeMark[]>(policy.image_badges ?? []);
+  const [isPlacingBadge, setIsPlacingBadge] = useState(false);
+  const [showImageMenu, setShowImageMenu] = useState(false);
+  const [draggingBadgeId, setDraggingBadgeId] = useState<string | null>(null);
+  const [editingBadgeId, setEditingBadgeId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const imageContainerRef = useRef<HTMLDivElement>(null);
+  const imageBadgesRef = useRef(imageBadges);
+
+  useEffect(() => {
+    imageBadgesRef.current = imageBadges;
+  }, [imageBadges]);
 
   const badgeStyle =
     badge === "현행" ? "bg-white text-ink-muted" : "bg-brand/10 text-brand";
@@ -206,7 +226,13 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
     changes: Partial<
       Pick<
         Policy,
-        "title" | "policy_note" | "ui_note" | "consideration_note" | "description_items" | "wireframe_url"
+        | "title"
+        | "policy_note"
+        | "ui_note"
+        | "consideration_note"
+        | "description_items"
+        | "wireframe_url"
+        | "image_badges"
       >
     >
   ) {
@@ -225,6 +251,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
           ui_note: uiNote,
           consideration_note: considerationNote,
           description_items: descriptionItems,
+          image_badges: imageBadges,
           ...changes,
           ...stamp,
         })
@@ -295,6 +322,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
           ui_note: uiNote,
           consideration_note: considerationNote,
           description_items: descriptionItems,
+          image_badges: imageBadges,
         })
         .select("*")
         .single();
@@ -345,6 +373,66 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
     await persist({ wireframe_url: null });
   }
 
+  function handleImageClick(e: React.MouseEvent<HTMLDivElement>) {
+    setShowImageMenu(false);
+    if (!isPlacingBadge || !imageContainerRef.current) return;
+
+    const rect = imageContainerRef.current.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    const nextNumber = imageBadges.length
+      ? Math.max(...imageBadges.map((b) => b.number)) + 1
+      : 1;
+    const next = [...imageBadges, { id: crypto.randomUUID(), number: nextNumber, x, y }];
+
+    setImageBadges(next);
+    setIsPlacingBadge(false);
+    persist({ image_badges: next });
+  }
+
+  function removeImageBadge(id: string) {
+    const next = imageBadges.filter((b) => b.id !== id);
+    setImageBadges(next);
+    persist({ image_badges: next });
+  }
+
+  function updateImageBadgeNumber(id: string, number: number) {
+    const next = imageBadges.map((b) => (b.id === id ? { ...b, number } : b));
+    setImageBadges(next);
+    persist({ image_badges: next });
+  }
+
+  function handleBadgeMouseDown(e: React.MouseEvent, id: string) {
+    e.stopPropagation();
+    e.preventDefault();
+    setDraggingBadgeId(id);
+  }
+
+  useEffect(() => {
+    if (!draggingBadgeId) return;
+
+    function handleMouseMove(e: MouseEvent) {
+      if (!imageContainerRef.current) return;
+      const rect = imageContainerRef.current.getBoundingClientRect();
+      const x = Math.min(100, Math.max(0, ((e.clientX - rect.left) / rect.width) * 100));
+      const y = Math.min(100, Math.max(0, ((e.clientY - rect.top) / rect.height) * 100));
+      setImageBadges((prev) => prev.map((b) => (b.id === draggingBadgeId ? { ...b, x, y } : b)));
+    }
+
+    function handleMouseUp() {
+      setDraggingBadgeId(null);
+      persist({ image_badges: imageBadgesRef.current });
+    }
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draggingBadgeId]);
+
   function addDescriptionRow() {
     const next = [...descriptionItems, ""];
     setDescriptionItems(next);
@@ -370,12 +458,6 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2 px-1">
-        <span className={`rounded-full px-2.5 py-1 text-xs font-bold tracking-wide ${badgeStyle}`}>
-          {badge}
-        </span>
-        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-ink-muted">
-          {VERSION_LABEL[policy.kind]}
-        </span>
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -406,19 +488,126 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
           <div className="flex w-[55%] shrink-0 flex-col gap-3">
         {policy.wireframe_url ? (
           <div
+            ref={imageContainerRef}
             tabIndex={0}
             onPaste={handlePaste}
-            className="group relative overflow-hidden rounded-2xl shadow-sm outline-none focus:ring-2 focus:ring-brand/30"
+            onClick={handleImageClick}
+            className={`group relative overflow-hidden rounded-2xl shadow-sm outline-none focus:ring-2 focus:ring-brand/30 ${isPlacingBadge ? "cursor-crosshair" : ""}`}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={policy.wireframe_url} alt="와이어프레임" className="w-full object-contain" />
-            <button
-              type="button"
-              onClick={handleRemoveWireframe}
-              className="absolute right-2 top-2 rounded-full bg-black/45 px-2.5 py-1 text-xs font-bold text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/65 group-hover:opacity-100"
-            >
-              이미지 삭제
-            </button>
+
+            <div className="absolute left-2 top-2 flex items-center gap-1.5">
+              <span className={`rounded-full px-2.5 py-1 text-xs font-bold tracking-wide shadow-sm ${badgeStyle}`}>
+                {badge}
+              </span>
+              <span className="rounded-full bg-white/90 px-2.5 py-1 text-xs font-bold text-ink-muted shadow-sm">
+                {VERSION_LABEL[policy.kind]}
+              </span>
+            </div>
+
+            <div className="absolute right-2 top-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowImageMenu((v) => !v);
+                }}
+                aria-label="이미지 설정"
+                className={`flex h-8 w-8 items-center justify-center rounded-full bg-black/45 text-sm text-white backdrop-blur-sm transition-opacity hover:bg-black/65 ${showImageMenu ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+              >
+                ⚙️
+              </button>
+              {showImageMenu && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute right-0 top-9 z-20 flex w-36 flex-col overflow-hidden rounded-xl bg-white py-1 text-sm font-bold shadow-lg"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowImageMenu(false);
+                      inputRef.current?.click();
+                    }}
+                    disabled={uploading}
+                    className="px-3 py-2 text-left text-ink transition-colors hover:bg-zinc-50 disabled:opacity-50"
+                  >
+                    {uploading ? "업로드 중..." : "이미지 교체"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowImageMenu(false);
+                      setIsPlacingBadge(true);
+                    }}
+                    className="px-3 py-2 text-left text-ink transition-colors hover:bg-zinc-50"
+                  >
+                    번호배지 추가
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowImageMenu(false);
+                      handleRemoveWireframe();
+                    }}
+                    className="px-3 py-2 text-left text-red-500 transition-colors hover:bg-red-50"
+                  >
+                    이미지 삭제
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {isPlacingBadge && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/10 text-sm font-bold text-white">
+                클릭해서 배지를 배치하세요
+              </div>
+            )}
+
+            {imageBadges.map((b) => (
+              <div
+                key={b.id}
+                onMouseDown={(e) => handleBadgeMouseDown(e, b.id)}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  setEditingBadgeId(b.id);
+                }}
+                style={{ left: `${b.x}%`, top: `${b.y}%` }}
+                className="group/badge absolute flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 cursor-move select-none items-center justify-center rounded-md bg-red-500 text-sm font-bold text-white shadow-md"
+              >
+                {editingBadgeId === b.id ? (
+                  <input
+                    type="number"
+                    autoFocus
+                    defaultValue={b.number}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onBlur={(e) => {
+                      const num = Number(e.target.value);
+                      updateImageBadgeNumber(b.id, Number.isFinite(num) && num > 0 ? num : b.number);
+                      setEditingBadgeId(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.currentTarget.blur();
+                    }}
+                    className="h-full w-full rounded-md bg-red-500 text-center text-white outline-none"
+                  />
+                ) : (
+                  b.number
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeImageBadge(b.id);
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-white text-[10px] text-red-500 opacity-0 shadow transition-opacity group-hover/badge:opacity-100"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
           </div>
         ) : (
           <div
@@ -430,16 +619,6 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
             <span>{uploading ? "업로드 중..." : "와이어프레임 이미지가 없습니다."}</span>
             <span className="text-xs text-ink-muted">클릭해서 업로드하거나 Ctrl+V로 캡쳐본을 붙여넣을 수 있어요.</span>
           </div>
-        )}
-        {policy.wireframe_url && (
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            disabled={uploading}
-            className="self-start rounded-full bg-white px-4 py-2 text-xs font-bold text-ink shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
-          >
-            {uploading ? "업로드 중..." : "이미지 교체"}
-          </button>
         )}
         <input
           ref={inputRef}
