@@ -11,7 +11,8 @@ type Policy = {
   item_id: string;
   kind: "current" | "proposal";
   title: string;
-  content: string;
+  policy_note: string;
+  description_items: string[];
   wireframe_url: string | null;
   sort_order: number;
   author_name: string | null;
@@ -38,7 +39,8 @@ function emptyPolicy(itemType: ItemType, itemId: string, kind: Policy["kind"]): 
     item_id: itemId,
     kind,
     title: "",
-    content: "",
+    policy_note: "",
+    description_items: [],
     wireframe_url: null,
     sort_order: 0,
     author_name: null,
@@ -180,7 +182,10 @@ type PolicyCardProps = {
 
 function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: PolicyCardProps) {
   const [title, setTitle] = useState(policy.title);
-  const [content, setContent] = useState(policy.content);
+  const [policyNote, setPolicyNote] = useState(policy.policy_note);
+  const [descriptionItems, setDescriptionItems] = useState<string[]>(
+    policy.description_items.length ? policy.description_items : [""]
+  );
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -188,7 +193,9 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
   const badgeStyle =
     badge === "현행" ? "bg-white text-ink-muted" : "bg-brand/10 text-brand";
 
-  async function persist(changes: Partial<Pick<Policy, "title" | "content" | "wireframe_url">>) {
+  async function persist(
+    changes: Partial<Pick<Policy, "title" | "policy_note" | "description_items" | "wireframe_url">>
+  ) {
     const supabase = createClient();
     const stamp = { author_name: currentUserName, updated_at: new Date().toISOString() };
 
@@ -200,7 +207,8 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
           item_id: policy.item_id,
           kind: policy.kind,
           title,
-          content,
+          policy_note: policyNote,
+          description_items: descriptionItems,
           ...changes,
           ...stamp,
         })
@@ -267,7 +275,8 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
           item_id: policy.item_id,
           kind: policy.kind,
           title,
-          content,
+          policy_note: policyNote,
+          description_items: descriptionItems,
         })
         .select("*")
         .single();
@@ -316,6 +325,28 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
   async function handleRemoveWireframe() {
     setError(null);
     await persist({ wireframe_url: null });
+  }
+
+  function addDescriptionRow() {
+    const next = [...descriptionItems, ""];
+    setDescriptionItems(next);
+    persist({ description_items: next });
+  }
+
+  function removeDescriptionRow(index: number) {
+    const next = descriptionItems.filter((_, i) => i !== index);
+    setDescriptionItems(next);
+    persist({ description_items: next });
+  }
+
+  function updateDescriptionRow(index: number, value: string) {
+    setDescriptionItems((prev) => prev.map((item, i) => (i === index ? value : item)));
+  }
+
+  function handleDescriptionBlur() {
+    if (JSON.stringify(descriptionItems) !== JSON.stringify(policy.description_items)) {
+      persist({ description_items: descriptionItems });
+    }
   }
 
   return (
@@ -400,15 +431,54 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
           placeholder="화면 제목을 입력하세요"
           className="rounded-xl px-3 py-2 text-lg font-bold text-ink outline-none transition-colors hover:bg-white focus:bg-white focus:ring-2 focus:ring-brand/20 placeholder:font-normal placeholder:text-ink-muted"
         />
-        <textarea
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          onBlur={() => {
-            if (content !== policy.content) persist({ content });
-          }}
-          placeholder="정책 및 디스크립션을 입력하세요."
-          className="min-h-[240px] flex-1 resize-none rounded-2xl bg-white px-3.5 py-2.5 text-sm leading-relaxed text-ink outline-none transition-colors focus:ring-2 focus:ring-brand/20"
-        />
+        <div className="rounded-2xl bg-red-50 p-4">
+          <div className="mb-2 text-xs font-bold text-red-500">정책</div>
+          <textarea
+            value={policyNote}
+            onChange={(e) => setPolicyNote(e.target.value)}
+            onBlur={() => {
+              if (policyNote !== policy.policy_note) persist({ policy_note: policyNote });
+            }}
+            placeholder="정책을 입력하세요."
+            className="min-h-[80px] w-full resize-none bg-transparent text-sm leading-relaxed text-red-600 outline-none placeholder:text-red-300"
+          />
+        </div>
+
+        <div className="flex flex-1 flex-col gap-2 rounded-2xl bg-white p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-ink-muted">디스크립션</span>
+            <button
+              type="button"
+              onClick={addDescriptionRow}
+              className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-ink-muted transition-colors hover:bg-zinc-200 hover:text-ink"
+            >
+              + 행 추가
+            </button>
+          </div>
+          <div className="flex flex-col gap-2">
+            {descriptionItems.map((item, index) => (
+              <div key={index} className="flex gap-2">
+                <span className="mt-1.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface text-xs font-bold text-ink-muted">
+                  {index + 1}
+                </span>
+                <textarea
+                  value={item}
+                  onChange={(e) => updateDescriptionRow(index, e.target.value)}
+                  onBlur={handleDescriptionBlur}
+                  placeholder="디스크립션을 입력하세요."
+                  className="min-h-[60px] flex-1 resize-none rounded-xl bg-surface px-3 py-2 text-sm leading-relaxed text-ink outline-none transition-colors focus:ring-2 focus:ring-brand/20"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeDescriptionRow(index)}
+                  className="self-start rounded-full px-2 py-1 text-xs font-bold text-ink-muted transition-colors hover:bg-red-50 hover:text-red-500"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
