@@ -368,18 +368,31 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-3xl bg-surface p-5">
-      <input
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        onBlur={() => {
-          if (title !== policy.title) persist({ title });
-        }}
-        placeholder="화면 제목을 입력하세요"
-        className="rounded-xl px-3 py-2 text-lg font-bold text-ink outline-none transition-colors hover:bg-white focus:bg-white focus:ring-2 focus:ring-brand/20 placeholder:font-normal placeholder:text-ink-muted"
-      />
-      <div className="flex gap-5">
-        <div className="flex w-[55%] shrink-0 flex-col gap-3">
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-2 px-1">
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onBlur={() => {
+            if (title !== policy.title) persist({ title });
+          }}
+          placeholder="화면 제목을 입력하세요"
+          className="flex-1 rounded-xl px-3 py-2 text-lg font-bold text-ink outline-none transition-colors hover:bg-white focus:bg-white focus:ring-2 focus:ring-brand/20 placeholder:font-normal placeholder:text-ink-muted"
+        />
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            aria-label="기획서 삭제"
+            className="rounded-full p-2 text-ink-muted transition-colors hover:bg-red-50 hover:text-red-500"
+          >
+            🗑
+          </button>
+        )}
+      </div>
+      <div className="flex flex-col gap-4 rounded-3xl bg-surface p-5">
+        <div className="flex gap-5">
+          <div className="flex w-[55%] shrink-0 flex-col gap-3">
         <div className="flex items-center gap-2">
           <span className={`rounded-full px-2.5 py-1 text-xs font-bold tracking-wide ${badgeStyle}`}>
             {badge}
@@ -391,15 +404,6 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
             <span className="text-xs text-ink-muted">
               {[policy.author_name, formatDate(policy.updated_at)].filter(Boolean).join(" · ")}
             </span>
-          )}
-          {onDelete && (
-            <button
-              type="button"
-              onClick={onDelete}
-              className="ml-auto rounded-full px-2.5 py-1 text-xs font-bold text-ink-muted transition-colors hover:bg-red-50 hover:text-red-500"
-            >
-              삭제
-            </button>
           )}
         </div>
         {policy.wireframe_url ? (
@@ -589,7 +593,8 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
             />
           </div>
         )}
-      </div>
+        </div>
+        </div>
       </div>
     </div>
   );
