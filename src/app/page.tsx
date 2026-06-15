@@ -50,10 +50,10 @@ export default async function Home() {
     }));
 
   return (
-    <div className="flex flex-1 flex-col bg-zinc-50">
-      <header className="flex items-center justify-between border-b border-zinc-200 bg-[#EDEDED] px-6 py-1">
+    <div className="flex flex-1 flex-col bg-surface">
+      <header className="flex items-center justify-between border-b border-zinc-200/60 bg-[#EDEDED] px-6 py-1">
         <Logo />
-        <div className="flex items-center gap-4 text-sm text-zinc-600">
+        <div className="flex items-center gap-4 text-sm text-ink-muted">
           <OnlineUsers
             userId={user!.id}
             name={profile?.name ?? user!.email ?? ""}
@@ -64,9 +64,9 @@ export default async function Home() {
             name={profile?.name ?? user!.email ?? ""}
             avatarUrl={profile?.avatar_url ?? null}
           />
-          <span>{profile?.name ?? user?.email}</span>
+          <span className="font-semibold text-ink">{profile?.name ?? user?.email}</span>
           {isAdmin && (
-            <Link href="/admin/users" className="font-medium text-zinc-900 underline">
+            <Link href="/admin/users" className="font-semibold text-brand">
               사용자 관리
             </Link>
           )}

@@ -125,34 +125,36 @@ export function ProductTabs({ products, currentUserName }: ProductTabsProps) {
 
   return (
     <>
-      <nav className="flex gap-1 border-b border-zinc-200 bg-white px-6">
-        {products.map((product) => (
-          <button
-            key={product.slug}
-            onClick={() => handleSelectProduct(product.slug)}
-            className={`border-b-2 px-4 py-3 text-sm font-medium ${
-              product.slug === activeSlug
-                ? "border-brand text-zinc-900"
-                : "border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-900"
-            }`}
-          >
-            {product.name}
-          </button>
-        ))}
+      <nav className="flex items-center gap-1 bg-white px-6 py-3">
+        <div className="flex gap-1 rounded-full bg-zinc-100 p-1">
+          {products.map((product) => (
+            <button
+              key={product.slug}
+              onClick={() => handleSelectProduct(product.slug)}
+              className={`rounded-full px-5 py-2 text-sm font-bold transition-colors ${
+                product.slug === activeSlug
+                  ? "bg-white text-ink shadow-sm"
+                  : "text-ink-muted hover:text-ink"
+              }`}
+            >
+              {product.name}
+            </button>
+          ))}
+        </div>
       </nav>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 gap-3 overflow-hidden bg-surface p-3">
         {sidebarItems.length === 0 ? (
-          <main className="flex flex-1 items-center justify-center text-zinc-400">
+          <main className="flex flex-1 items-center justify-center rounded-3xl bg-white text-ink-muted">
             아직 등록된 기능 메뉴가 없습니다.
           </main>
         ) : (
           <>
-            <aside className="w-52 shrink-0 overflow-y-auto bg-[#f5f5f7] px-2 py-4">
-              <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+            <aside className="w-56 shrink-0 overflow-y-auto rounded-3xl bg-white px-3 py-5">
+              <div className="px-3 pb-3 text-[11px] font-bold uppercase tracking-wider text-ink-muted">
                 {active?.name}
               </div>
-              <ul className="space-y-0.5">
+              <ul className="space-y-1">
                 {sidebarItems.map((item) =>
                   item.children ? (
                     <li key={item.id}>
@@ -161,15 +163,15 @@ export function ProductTabs({ products, currentUserName }: ProductTabsProps) {
                           setSelectedId(item.id);
                           toggleExpanded(item.id);
                         }}
-                        className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[13px] font-medium transition-colors duration-150 ${
+                        className={`flex w-full items-center justify-between rounded-2xl px-3 py-2.5 text-left text-sm font-semibold transition-colors duration-150 ${
                           item.id === selected?.id
-                            ? "bg-white text-zinc-900 shadow-sm"
-                            : "text-zinc-700 hover:bg-white/60"
+                            ? "bg-brand/10 text-brand"
+                            : "text-ink hover:bg-zinc-100"
                         }`}
                       >
                         <span>{item.name}</span>
                         <span
-                          className={`text-zinc-400 transition-transform duration-150 ${
+                          className={`text-ink-muted transition-transform duration-150 ${
                             expandedIds.has(item.id) ? "rotate-90" : ""
                           }`}
                         >
@@ -177,15 +179,15 @@ export function ProductTabs({ products, currentUserName }: ProductTabsProps) {
                         </span>
                       </button>
                       {expandedIds.has(item.id) && (
-                        <ul className="mt-0.5 space-y-0.5 pl-3">
+                        <ul className="mt-1 space-y-1 pl-3">
                           {item.children.map((child) => (
                             <li key={child.id}>
                               <button
                                 onClick={() => setSelectedId(child.id)}
-                                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[13px] transition-colors duration-150 ${
+                                className={`flex w-full items-center justify-between rounded-2xl px-3 py-2.5 text-left text-sm transition-colors duration-150 ${
                                   child.id === selected?.id
-                                    ? "bg-white font-medium text-zinc-900 shadow-sm"
-                                    : "text-zinc-600 hover:bg-white/60"
+                                    ? "bg-brand/10 font-semibold text-brand"
+                                    : "text-ink-muted hover:bg-zinc-100 hover:text-ink"
                                 }`}
                               >
                                 <span>{child.name}</span>
@@ -199,15 +201,15 @@ export function ProductTabs({ products, currentUserName }: ProductTabsProps) {
                     <li key={item.id}>
                       <button
                         onClick={() => setSelectedId(item.id)}
-                        className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[13px] transition-colors duration-150 ${
+                        className={`flex w-full items-center justify-between rounded-2xl px-3 py-2.5 text-left text-sm transition-colors duration-150 ${
                           item.id === selected?.id
-                            ? "bg-white font-medium text-zinc-900 shadow-sm"
-                            : "text-zinc-600 hover:bg-white/60"
+                            ? "bg-brand/10 font-semibold text-brand"
+                            : "text-ink hover:bg-zinc-100"
                         }`}
                       >
                         <span>{item.name}</span>
                         {item.status && (
-                          <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${STATUS_STYLE[item.status]}`}>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${STATUS_STYLE[item.status]}`}>
                             {STATUS_LABEL[item.status]}
                           </span>
                         )}
@@ -218,19 +220,19 @@ export function ProductTabs({ products, currentUserName }: ProductTabsProps) {
               </ul>
             </aside>
 
-            <main className="flex-1 overflow-y-auto px-6 py-6">
+            <main className="flex-1 overflow-y-auto rounded-3xl bg-white px-6 py-6">
               {selected && (
                 <div>
                   <div className="flex items-center gap-2">
-                    <h1 className="text-lg font-semibold text-zinc-900">{selected.name}</h1>
+                    <h1 className="text-xl font-bold text-ink">{selected.name}</h1>
                     {selected.status && (
-                      <span className={`rounded px-1.5 py-0.5 text-xs ${STATUS_STYLE[selected.status]}`}>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${STATUS_STYLE[selected.status]}`}>
                         {STATUS_LABEL[selected.status]}
                       </span>
                     )}
                   </div>
                   {selected.itemType === "home" ? (
-                    <p className="mt-4 text-sm text-zinc-400">첫화면입니다.</p>
+                    <p className="mt-4 text-sm text-ink-muted">첫화면입니다.</p>
                   ) : (
                     <FeatureDetail
                       key={selected.id}

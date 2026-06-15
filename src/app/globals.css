@@ -10,6 +10,9 @@
   --color-foreground: var(--foreground);
   --color-brand: #2196f3;
   --color-brand-hover: #1976d2;
+  --color-surface: #f2f4f6;
+  --color-ink: #191f28;
+  --color-ink-muted: #8b95a1;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

@@ -117,14 +117,14 @@ export function FeatureDetail({ itemType, itemId, currentUserName }: FeatureDeta
 
   return (
     <div className="mt-6 flex flex-col gap-5">
-      <div className="flex items-center gap-1 border-b border-zinc-200">
+      <div className="flex items-center gap-1 rounded-full bg-zinc-100 p-1">
         <button
           type="button"
           onClick={() => setSelectedTab("current")}
-          className={`border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+          className={`rounded-full px-4 py-2 text-sm font-bold transition-colors ${
             selectedTab === "current"
-              ? "border-brand text-zinc-900"
-              : "border-transparent text-zinc-500 hover:text-zinc-900"
+              ? "bg-white text-ink shadow-sm"
+              : "text-ink-muted hover:text-ink"
           }`}
         >
           현행
@@ -134,10 +134,10 @@ export function FeatureDetail({ itemType, itemId, currentUserName }: FeatureDeta
             key={proposal.id}
             type="button"
             onClick={() => setSelectedTab(proposal.id)}
-            className={`border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+            className={`rounded-full px-4 py-2 text-sm font-bold transition-colors ${
               selectedTab === proposal.id
-                ? "border-brand text-zinc-900"
-                : "border-transparent text-zinc-500 hover:text-zinc-900"
+                ? "bg-white text-ink shadow-sm"
+                : "text-ink-muted hover:text-ink"
             }`}
           >
             신규 기획{proposals.length > 1 ? ` ${index + 1}` : ""}
@@ -146,7 +146,7 @@ export function FeatureDetail({ itemType, itemId, currentUserName }: FeatureDeta
         <button
           type="button"
           onClick={handleAddProposal}
-          className="border-b-2 border-transparent px-4 py-2.5 text-sm font-medium text-zinc-400 transition-colors hover:text-brand"
+          className="rounded-full px-4 py-2 text-sm font-bold text-ink-muted transition-colors hover:text-brand"
         >
           + 추가
         </button>
@@ -186,7 +186,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
   const inputRef = useRef<HTMLInputElement>(null);
 
   const badgeStyle =
-    badge === "현행" ? "bg-zinc-100 text-zinc-500" : "bg-brand/10 text-brand";
+    badge === "현행" ? "bg-white text-ink-muted" : "bg-brand/10 text-brand";
 
   async function persist(changes: Partial<Pick<Policy, "title" | "content" | "wireframe_url">>) {
     const supabase = createClient();
@@ -319,17 +319,17 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
   }
 
   return (
-    <div className="flex gap-5 rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
+    <div className="flex gap-5 rounded-3xl bg-surface p-5">
       <div className="flex w-[55%] shrink-0 flex-col gap-3">
         <div className="flex items-center gap-2">
-          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold tracking-wide ${badgeStyle}`}>
+          <span className={`rounded-full px-2.5 py-1 text-xs font-bold tracking-wide ${badgeStyle}`}>
             {badge}
           </span>
-          <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-500">
+          <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-ink-muted">
             {VERSION_LABEL[policy.kind]}
           </span>
           {(policy.author_name || formatDate(policy.updated_at)) && (
-            <span className="text-xs text-zinc-400">
+            <span className="text-xs text-ink-muted">
               {[policy.author_name, formatDate(policy.updated_at)].filter(Boolean).join(" · ")}
             </span>
           )}
@@ -337,7 +337,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
             <button
               type="button"
               onClick={onDelete}
-              className="ml-auto rounded-full px-2 py-1 text-xs text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500"
+              className="ml-auto rounded-full px-2.5 py-1 text-xs font-bold text-ink-muted transition-colors hover:bg-red-50 hover:text-red-500"
             >
               삭제
             </button>
@@ -347,14 +347,14 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
           <div
             tabIndex={0}
             onPaste={handlePaste}
-            className="group relative overflow-hidden rounded-xl border border-zinc-200/80 shadow-sm outline-none focus:ring-2 focus:ring-brand/30"
+            className="group relative overflow-hidden rounded-2xl shadow-sm outline-none focus:ring-2 focus:ring-brand/30"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={policy.wireframe_url} alt="와이어프레임" className="w-full object-contain" />
             <button
               type="button"
               onClick={handleRemoveWireframe}
-              className="absolute right-2 top-2 rounded-full bg-black/45 px-2.5 py-1 text-xs font-medium text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/65 group-hover:opacity-100"
+              className="absolute right-2 top-2 rounded-full bg-black/45 px-2.5 py-1 text-xs font-bold text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/65 group-hover:opacity-100"
             >
               이미지 삭제
             </button>
@@ -364,10 +364,10 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
             tabIndex={0}
             onPaste={handlePaste}
             onClick={() => inputRef.current?.click()}
-            className="flex aspect-[4/3] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-zinc-300 bg-zinc-50/60 text-sm text-zinc-400 outline-none transition-colors hover:border-brand/40 hover:bg-brand/5 focus:border-brand/40 focus:bg-brand/5 focus:ring-2 focus:ring-brand/20"
+            className="flex aspect-[4/3] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-zinc-200 bg-white text-sm font-medium text-ink-muted outline-none transition-colors hover:border-brand/40 hover:bg-brand/5 focus:border-brand/40 focus:bg-brand/5 focus:ring-2 focus:ring-brand/20"
           >
             <span>{uploading ? "업로드 중..." : "와이어프레임 이미지가 없습니다."}</span>
-            <span className="text-xs text-zinc-400">클릭해서 업로드하거나 Ctrl+V로 캡쳐본을 붙여넣을 수 있어요.</span>
+            <span className="text-xs text-ink-muted">클릭해서 업로드하거나 Ctrl+V로 캡쳐본을 붙여넣을 수 있어요.</span>
           </div>
         )}
         {policy.wireframe_url && (
@@ -375,7 +375,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
             type="button"
             onClick={() => inputRef.current?.click()}
             disabled={uploading}
-            className="self-start rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:border-zinc-300 hover:bg-zinc-50 disabled:opacity-50"
+            className="self-start rounded-full bg-white px-4 py-2 text-xs font-bold text-ink shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
           >
             {uploading ? "업로드 중..." : "이미지 교체"}
           </button>
@@ -398,7 +398,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
             if (title !== policy.title) persist({ title });
           }}
           placeholder="화면 제목을 입력하세요"
-          className="rounded-lg px-2 py-1.5 text-base font-semibold text-zinc-900 outline-none transition-colors hover:bg-zinc-50 focus:bg-white focus:ring-2 focus:ring-brand/20 placeholder:font-normal placeholder:text-zinc-400"
+          className="rounded-xl px-3 py-2 text-lg font-bold text-ink outline-none transition-colors hover:bg-white focus:bg-white focus:ring-2 focus:ring-brand/20 placeholder:font-normal placeholder:text-ink-muted"
         />
         <textarea
           value={content}
@@ -407,7 +407,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
             if (content !== policy.content) persist({ content });
           }}
           placeholder="정책 및 디스크립션을 입력하세요."
-          className="min-h-[240px] flex-1 resize-none rounded-xl border border-zinc-200 px-3.5 py-2.5 text-sm leading-relaxed outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/20"
+          className="min-h-[240px] flex-1 resize-none rounded-2xl bg-white px-3.5 py-2.5 text-sm leading-relaxed text-ink outline-none transition-colors focus:ring-2 focus:ring-brand/20"
         />
       </div>
     </div>
