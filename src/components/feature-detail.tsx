@@ -183,8 +183,6 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
   const [content, setContent] = useState(policy.content);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showPicker, setShowPicker] = useState(false);
-  const [savedImages, setSavedImages] = useState<{ name: string; url: string }[] | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const badgeStyle =
@@ -320,39 +318,6 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
     await persist({ wireframe_url: null });
   }
 
-  async function handleOpenPicker() {
-    setError(null);
-    setShowPicker(true);
-
-    const supabase = createClient();
-    const folder = `${policy.item_type}/${policy.item_id}`;
-    const { data, error: listError } = await supabase.storage.from("wireframes").list(folder, {
-      sortBy: { column: "created_at", order: "desc" },
-    });
-
-    if (listError) {
-      setError(listError.message);
-      setSavedImages([]);
-      return;
-    }
-
-    const images = (data ?? [])
-      .filter((item) => item.id)
-      .map((item) => {
-        const path = `${folder}/${item.name}`;
-        const { data: urlData } = supabase.storage.from("wireframes").getPublicUrl(path);
-        return { name: item.name, url: urlData.publicUrl };
-      });
-
-    setSavedImages(images);
-  }
-
-  async function handlePickSavedImage(url: string) {
-    setShowPicker(false);
-    setError(null);
-    await persist({ wireframe_url: `${url}?v=${Date.now()}` });
-  }
-
   return (
     <div className="flex gap-5 rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
       <div className="flex w-[55%] shrink-0 flex-col gap-3">
@@ -398,29 +363,23 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
           <div
             tabIndex={0}
             onPaste={handlePaste}
-            className="flex aspect-[4/3] flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-zinc-300 bg-zinc-50/60 text-sm text-zinc-400 outline-none transition-colors focus:border-brand/40 focus:bg-brand/5 focus:ring-2 focus:ring-brand/20"
+            onClick={() => inputRef.current?.click()}
+            className="flex aspect-[4/3] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-zinc-300 bg-zinc-50/60 text-sm text-zinc-400 outline-none transition-colors hover:border-brand/40 hover:bg-brand/5 focus:border-brand/40 focus:bg-brand/5 focus:ring-2 focus:ring-brand/20"
           >
-            <span>와이어프레임 이미지가 없습니다.</span>
-            <span className="text-xs text-zinc-400">클릭 후 Ctrl+V로 캡쳐본을 붙여넣을 수 있어요.</span>
+            <span>{uploading ? "업로드 중..." : "와이어프레임 이미지가 없습니다."}</span>
+            <span className="text-xs text-zinc-400">클릭해서 업로드하거나 Ctrl+V로 캡쳐본을 붙여넣을 수 있어요.</span>
           </div>
         )}
-        <div className="flex gap-2">
+        {policy.wireframe_url && (
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
             disabled={uploading}
             className="self-start rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:border-zinc-300 hover:bg-zinc-50 disabled:opacity-50"
           >
-            {uploading ? "업로드 중..." : "이미지 업로드"}
+            {uploading ? "업로드 중..." : "이미지 교체"}
           </button>
-          <button
-            type="button"
-            onClick={handleOpenPicker}
-            className="self-start rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:border-zinc-300 hover:bg-zinc-50"
-          >
-            저장된 이미지 불러오기
-          </button>
-        </div>
+        )}
         <input
           ref={inputRef}
           type="file"
@@ -429,48 +388,6 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
           onChange={handleFileChange}
         />
         {error && <p className="text-xs text-red-500">{error}</p>}
-
-        {showPicker && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
-            onClick={() => setShowPicker(false)}
-          >
-            <div
-              className="max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-zinc-800">저장된 이미지 불러오기</h3>
-                <button
-                  type="button"
-                  onClick={() => setShowPicker(false)}
-                  className="rounded-full px-2 py-1 text-xs text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
-                >
-                  닫기
-                </button>
-              </div>
-              {savedImages === null ? (
-                <p className="text-sm text-zinc-400">불러오는 중...</p>
-              ) : savedImages.length === 0 ? (
-                <p className="text-sm text-zinc-400">저장된 이미지가 없습니다.</p>
-              ) : (
-                <div className="grid grid-cols-3 gap-3">
-                  {savedImages.map((image) => (
-                    <button
-                      key={image.name}
-                      type="button"
-                      onClick={() => handlePickSavedImage(image.url)}
-                      className="overflow-hidden rounded-xl border border-zinc-200 shadow-sm transition-all hover:border-brand hover:shadow-md"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={image.url} alt={image.name} className="aspect-[4/3] w-full object-cover" />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="flex flex-1 flex-col gap-3">
@@ -480,8 +397,8 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
           onBlur={() => {
             if (title !== policy.title) persist({ title });
           }}
-          placeholder="화면 제목"
-          className="rounded-xl border border-zinc-200 px-3.5 py-2.5 text-sm font-medium outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/20"
+          placeholder="화면 제목을 입력하세요"
+          className="rounded-lg px-2 py-1.5 text-base font-semibold text-zinc-900 outline-none transition-colors hover:bg-zinc-50 focus:bg-white focus:ring-2 focus:ring-brand/20 placeholder:font-normal placeholder:text-zinc-400"
         />
         <textarea
           value={content}
