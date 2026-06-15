@@ -458,6 +458,12 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2 px-1">
+        <span className={`rounded-full px-2.5 py-1 text-xs font-bold tracking-wide ${badgeStyle}`}>
+          {badge}
+        </span>
+        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-ink-muted">
+          {VERSION_LABEL[policy.kind]}
+        </span>
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -496,15 +502,6 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={policy.wireframe_url} alt="와이어프레임" className="w-full object-contain" />
-
-            <div className="absolute left-2 top-2 flex items-center gap-1.5">
-              <span className={`rounded-full px-2.5 py-1 text-xs font-bold tracking-wide shadow-sm ${badgeStyle}`}>
-                {badge}
-              </span>
-              <span className="rounded-full bg-white/90 px-2.5 py-1 text-xs font-bold text-ink-muted shadow-sm">
-                {VERSION_LABEL[policy.kind]}
-              </span>
-            </div>
 
             <div className="absolute right-2 top-2">
               <button
