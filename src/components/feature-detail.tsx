@@ -56,6 +56,7 @@ export function FeatureDetail({ itemType, itemId, currentUserName }: FeatureDeta
   const [current, setCurrent] = useState<Policy | null>(null);
   const [proposals, setProposals] = useState<Policy[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedTab, setSelectedTab] = useState<"current" | string>("current");
 
   useEffect(() => {
     let active = true;
@@ -97,6 +98,7 @@ export function FeatureDetail({ itemType, itemId, currentUserName }: FeatureDeta
 
     if (!error && data) {
       setProposals((prev) => [...prev, data as Policy]);
+      setSelectedTab((data as Policy).id);
     }
   }
 
@@ -104,36 +106,66 @@ export function FeatureDetail({ itemType, itemId, currentUserName }: FeatureDeta
     const supabase = createClient();
     await supabase.from("policies").delete().eq("id", id);
     setProposals((prev) => prev.filter((p) => p.id !== id));
+    if (selectedTab === id) setSelectedTab("current");
   }
 
   if (loading || !current) {
     return <p className="mt-4 text-sm text-zinc-400">불러오는 중...</p>;
   }
 
+  const selectedPolicy = selectedTab === "current" ? current : proposals.find((p) => p.id === selectedTab);
+
   return (
     <div className="mt-6 flex flex-col gap-5">
-      <PolicyCard policy={current} badge="현행" onSaved={setCurrent} currentUserName={currentUserName} />
+      <div className="flex items-center gap-1 border-b border-zinc-200">
+        <button
+          type="button"
+          onClick={() => setSelectedTab("current")}
+          className={`border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+            selectedTab === "current"
+              ? "border-brand text-zinc-900"
+              : "border-transparent text-zinc-500 hover:text-zinc-900"
+          }`}
+        >
+          현행
+        </button>
+        {proposals.map((proposal, index) => (
+          <button
+            key={proposal.id}
+            type="button"
+            onClick={() => setSelectedTab(proposal.id)}
+            className={`border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+              selectedTab === proposal.id
+                ? "border-brand text-zinc-900"
+                : "border-transparent text-zinc-500 hover:text-zinc-900"
+            }`}
+          >
+            신규 기획{proposals.length > 1 ? ` ${index + 1}` : ""}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={handleAddProposal}
+          className="border-b-2 border-transparent px-4 py-2.5 text-sm font-medium text-zinc-400 transition-colors hover:text-brand"
+        >
+          + 추가
+        </button>
+      </div>
 
-      {proposals.map((proposal) => (
+      {selectedPolicy && (
         <PolicyCard
-          key={proposal.id}
-          policy={proposal}
-          badge="신규 기획"
-          onSaved={(updated) =>
-            setProposals((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+          key={selectedPolicy.id}
+          policy={selectedPolicy}
+          badge={selectedTab === "current" ? "현행" : "신규 기획"}
+          onSaved={
+            selectedTab === "current"
+              ? setCurrent
+              : (updated) => setProposals((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
           }
-          onDelete={() => handleDeleteProposal(proposal.id)}
+          onDelete={selectedTab !== "current" ? () => handleDeleteProposal(selectedPolicy.id) : undefined}
           currentUserName={currentUserName}
         />
-      ))}
-
-      <button
-        type="button"
-        onClick={handleAddProposal}
-        className="self-start rounded-2xl border border-dashed border-zinc-300 px-4 py-2.5 text-sm font-medium text-zinc-500 transition-colors hover:border-brand hover:bg-brand/5 hover:text-brand"
-      >
-        + 신규 기획 추가
-      </button>
+      )}
     </div>
   );
 }
