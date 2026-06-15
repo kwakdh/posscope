@@ -12,6 +12,8 @@ type Policy = {
   kind: "current" | "proposal";
   title: string;
   policy_note: string;
+  ui_note: string;
+  consideration_note: string;
   description_items: string[];
   wireframe_url: string | null;
   sort_order: number;
@@ -40,6 +42,8 @@ function emptyPolicy(itemType: ItemType, itemId: string, kind: Policy["kind"]): 
     kind,
     title: "",
     policy_note: "",
+    ui_note: "",
+    consideration_note: "",
     description_items: [],
     wireframe_url: null,
     sort_order: 0,
@@ -183,6 +187,11 @@ type PolicyCardProps = {
 function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: PolicyCardProps) {
   const [title, setTitle] = useState(policy.title);
   const [policyNote, setPolicyNote] = useState(policy.policy_note);
+  const [uiNote, setUiNote] = useState(policy.ui_note);
+  const [considerationNote, setConsiderationNote] = useState(policy.consideration_note);
+  const [showPolicy, setShowPolicy] = useState(!!policy.policy_note);
+  const [showUiNote, setShowUiNote] = useState(!!policy.ui_note);
+  const [showConsideration, setShowConsideration] = useState(!!policy.consideration_note);
   const [descriptionItems, setDescriptionItems] = useState<string[]>(
     policy.description_items.length ? policy.description_items : [""]
   );
@@ -194,7 +203,12 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
     badge === "현행" ? "bg-white text-ink-muted" : "bg-brand/10 text-brand";
 
   async function persist(
-    changes: Partial<Pick<Policy, "title" | "policy_note" | "description_items" | "wireframe_url">>
+    changes: Partial<
+      Pick<
+        Policy,
+        "title" | "policy_note" | "ui_note" | "consideration_note" | "description_items" | "wireframe_url"
+      >
+    >
   ) {
     const supabase = createClient();
     const stamp = { author_name: currentUserName, updated_at: new Date().toISOString() };
@@ -208,6 +222,8 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
           kind: policy.kind,
           title,
           policy_note: policyNote,
+          ui_note: uiNote,
+          consideration_note: considerationNote,
           description_items: descriptionItems,
           ...changes,
           ...stamp,
@@ -276,6 +292,8 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
           kind: policy.kind,
           title,
           policy_note: policyNote,
+          ui_note: uiNote,
+          consideration_note: considerationNote,
           description_items: descriptionItems,
         })
         .select("*")
@@ -350,8 +368,18 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
   }
 
   return (
-    <div className="flex gap-5 rounded-3xl bg-surface p-5">
-      <div className="flex w-[55%] shrink-0 flex-col gap-3">
+    <div className="flex flex-col gap-4 rounded-3xl bg-surface p-5">
+      <input
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        onBlur={() => {
+          if (title !== policy.title) persist({ title });
+        }}
+        placeholder="화면 제목을 입력하세요"
+        className="rounded-xl px-3 py-2 text-lg font-bold text-ink outline-none transition-colors hover:bg-white focus:bg-white focus:ring-2 focus:ring-brand/20 placeholder:font-normal placeholder:text-ink-muted"
+      />
+      <div className="flex gap-5">
+        <div className="flex w-[55%] shrink-0 flex-col gap-3">
         <div className="flex items-center gap-2">
           <span className={`rounded-full px-2.5 py-1 text-xs font-bold tracking-wide ${badgeStyle}`}>
             {badge}
@@ -422,29 +450,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
       </div>
 
       <div className="flex flex-1 flex-col gap-3">
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onBlur={() => {
-            if (title !== policy.title) persist({ title });
-          }}
-          placeholder="화면 제목을 입력하세요"
-          className="rounded-xl px-3 py-2 text-lg font-bold text-ink outline-none transition-colors hover:bg-white focus:bg-white focus:ring-2 focus:ring-brand/20 placeholder:font-normal placeholder:text-ink-muted"
-        />
-        <div className="rounded-2xl bg-red-50 p-4">
-          <div className="mb-2 text-xs font-bold text-red-500">정책</div>
-          <textarea
-            value={policyNote}
-            onChange={(e) => setPolicyNote(e.target.value)}
-            onBlur={() => {
-              if (policyNote !== policy.policy_note) persist({ policy_note: policyNote });
-            }}
-            placeholder="정책을 입력하세요."
-            className="min-h-[80px] w-full resize-none bg-transparent text-sm leading-relaxed text-red-600 outline-none placeholder:text-red-300"
-          />
-        </div>
-
-        <div className="flex flex-1 flex-col gap-2 rounded-2xl bg-white p-4">
+        <div className="flex max-h-[360px] flex-col gap-2 overflow-y-auto rounded-2xl bg-white p-4">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-ink-muted">디스크립션</span>
             <button
@@ -479,6 +485,111 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName }: Polic
             ))}
           </div>
         </div>
+
+        {(!showPolicy || !showUiNote || !showConsideration) && (
+          <div className="flex gap-2">
+            {!showPolicy && (
+              <button
+                type="button"
+                onClick={() => setShowPolicy(true)}
+                className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-bold text-ink-muted transition-colors hover:bg-zinc-200 hover:text-ink"
+              >
+                + 정책
+              </button>
+            )}
+            {!showUiNote && (
+              <button
+                type="button"
+                onClick={() => setShowUiNote(true)}
+                className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-bold text-ink-muted transition-colors hover:bg-zinc-200 hover:text-ink"
+              >
+                + UI 참고사항
+              </button>
+            )}
+            {!showConsideration && (
+              <button
+                type="button"
+                onClick={() => setShowConsideration(true)}
+                className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-bold text-ink-muted transition-colors hover:bg-zinc-200 hover:text-ink"
+              >
+                + 고려사항
+              </button>
+            )}
+          </div>
+        )}
+
+        {showPolicy && (
+          <div className="rounded-2xl bg-red-50 p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-bold text-red-500">정책</span>
+              <button
+                type="button"
+                onClick={() => setShowPolicy(false)}
+                className="rounded-full px-2 py-0.5 text-xs font-bold text-red-300 transition-colors hover:bg-red-100 hover:text-red-500"
+              >
+                ✕
+              </button>
+            </div>
+            <textarea
+              value={policyNote}
+              onChange={(e) => setPolicyNote(e.target.value)}
+              onBlur={() => {
+                if (policyNote !== policy.policy_note) persist({ policy_note: policyNote });
+              }}
+              placeholder="정책을 입력하세요."
+              className="min-h-[80px] w-full resize-none bg-transparent text-sm leading-relaxed text-red-600 outline-none placeholder:text-red-300"
+            />
+          </div>
+        )}
+
+        {showUiNote && (
+          <div className="rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50 p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-sm font-bold text-amber-600">★ UI 참고사항</span>
+              <button
+                type="button"
+                onClick={() => setShowUiNote(false)}
+                className="rounded-full px-2 py-0.5 text-xs font-bold text-amber-400 transition-colors hover:bg-amber-100 hover:text-amber-600"
+              >
+                ✕
+              </button>
+            </div>
+            <textarea
+              value={uiNote}
+              onChange={(e) => setUiNote(e.target.value)}
+              onBlur={() => {
+                if (uiNote !== policy.ui_note) persist({ ui_note: uiNote });
+              }}
+              placeholder="내용을 입력하세요."
+              className="min-h-[80px] w-full resize-none bg-transparent text-sm leading-relaxed text-amber-800 outline-none placeholder:text-amber-300"
+            />
+          </div>
+        )}
+
+        {showConsideration && (
+          <div className="rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50 p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-sm font-bold text-emerald-600">★ 고려사항</span>
+              <button
+                type="button"
+                onClick={() => setShowConsideration(false)}
+                className="rounded-full px-2 py-0.5 text-xs font-bold text-emerald-400 transition-colors hover:bg-emerald-100 hover:text-emerald-600"
+              >
+                ✕
+              </button>
+            </div>
+            <textarea
+              value={considerationNote}
+              onChange={(e) => setConsiderationNote(e.target.value)}
+              onBlur={() => {
+                if (considerationNote !== policy.consideration_note) persist({ consideration_note: considerationNote });
+              }}
+              placeholder="내용을 입력하세요."
+              className="min-h-[80px] w-full resize-none bg-transparent text-sm leading-relaxed text-emerald-800 outline-none placeholder:text-emerald-300"
+            />
+          </div>
+        )}
+      </div>
       </div>
     </div>
   );
