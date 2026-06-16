@@ -310,7 +310,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName, canEdit
 
   async function persist(
     changes: Partial<Pick<Policy, "title" | "policy_note" | "ui_note" | "consideration_note" | "description_items" | "wireframe_url" | "image_badges">>
-  ) {
+  ): Promise<Policy | null> {
     const supabase = createClient();
     const stamp = { author_name: currentUserName, updated_at: new Date().toISOString() };
 
@@ -320,8 +320,8 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName, canEdit
         .insert({ item_type: policy.item_type, item_id: policy.item_id, kind: policy.kind, title, policy_note: policyNote, ui_note: uiNote, consideration_note: considerationNote, description_items: descriptionItems, image_badges: imageBadges, ...changes, ...stamp })
         .select("*")
         .single();
-      if (!insertError && data) onSaved(data as Policy);
-      return;
+      if (!insertError && data) { onSaved(data as Policy); return data as Policy; }
+      return null;
     }
 
     const { data, error: updateError } = await supabase
@@ -330,7 +330,8 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName, canEdit
       .eq("id", policy.id)
       .select("*")
       .single();
-    if (!updateError && data) onSaved(data as Policy);
+    if (!updateError && data) { onSaved(data as Policy); return data as Policy; }
+    return null;
   }
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -348,7 +349,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName, canEdit
     void uploadFile(file);
   }
 
-  async function uploadFile(file: File) {
+  async function uploadFile(file: File, knownPolicyId?: string) {
     if (!file.type.startsWith("image/")) { setError("이미지 파일만 업로드할 수 있습니다."); return; }
     if (file.size > MAX_SIZE) { setError("이미지 크기는 5MB 이하여야 합니다."); return; }
 
@@ -356,7 +357,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName, canEdit
     setUploading(true);
     const supabase = createClient();
 
-    let policyId = policy.id;
+    let policyId = knownPolicyId || policy.id;
     if (!policyId) {
       const { data, error: insertError } = await supabase
         .from("policies")
@@ -398,7 +399,7 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName, canEdit
     setShowFigmaInput(false);
 
     try {
-      const res = await fetch("/api/figma-import", {
+      const res = await fetch("/api/figma-parse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: figmaUrl.trim() }),
@@ -406,16 +407,64 @@ function PolicyCard({ policy, badge, onSaved, onDelete, currentUserName, canEdit
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        setError(err.error ?? "피그마 이미지를 가져오지 못했습니다.");
+        setError(err.error ?? "피그마를 가져오지 못했습니다.");
         setUploading(false);
         return;
       }
 
-      const blob = await res.blob();
-      const file = new File([blob], "figma-import.png", { type: blob.type || "image/png" });
+      const parsed = await res.json();
+      const {
+        imageBase64,
+        imageMimeType,
+        descriptions,
+        policyNote: newPolicyNote,
+        uiNote: newUiNote,
+        considerationNote: newConsiderationNote,
+        wireframeName,
+      } = parsed as {
+        imageBase64: string;
+        imageMimeType: string;
+        descriptions: string[];
+        policyNote: string;
+        uiNote: string;
+        considerationNote: string;
+        wireframeName: string;
+        wireframeCount: number;
+      };
+
+      // Prepare new text values
+      const newDescs = Array.isArray(descriptions) && descriptions.length > 0 ? descriptions : [""];
+
+      // Update local state
+      setDescriptionItems(newDescs);
+      if (newPolicyNote) { setPolicyNote(newPolicyNote); setShowPolicy(true); }
+      if (newUiNote) { setUiNote(newUiNote); setShowUiNote(true); }
+      if (newConsiderationNote) { setConsiderationNote(newConsiderationNote); setShowConsideration(true); }
+      if (wireframeName && !title) setTitle(wireframeName);
+
+      // Persist text data first and get the policy record (important for image upload)
+      const savedPolicy = await persist({
+        ...(wireframeName && !title ? { title: wireframeName } : {}),
+        description_items: newDescs,
+        ...(newPolicyNote ? { policy_note: newPolicyNote } : {}),
+        ...(newUiNote ? { ui_note: newUiNote } : {}),
+        ...(newConsiderationNote ? { consideration_note: newConsiderationNote } : {}),
+      });
+
       setFigmaUrl("");
-      await uploadFile(file);
-    } catch {
+
+      // Upload wireframe image if available
+      if (imageBase64) {
+        const bytes = Uint8Array.from(atob(imageBase64), (c) => c.charCodeAt(0));
+        const blob = new Blob([bytes], { type: imageMimeType ?? "image/png" });
+        const ext = (imageMimeType ?? "image/png").split("/")[1] ?? "png";
+        const file = new File([blob], `figma.${ext}`, { type: imageMimeType ?? "image/png" });
+        await uploadFile(file, savedPolicy?.id);
+      } else {
+        setUploading(false);
+      }
+    } catch (e) {
+      console.error("figma-parse error:", e);
       setError("피그마 가져오기 중 오류가 발생했습니다.");
       setUploading(false);
     }
