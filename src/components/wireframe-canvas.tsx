@@ -170,8 +170,8 @@ export function WireframeCanvas({
     }
 
     return (
-      <div className="flex shrink-0 flex-col gap-2" style={{ width: 280 }}>
-        {/* Image container */}
+      <div className="flex shrink-0 flex-col gap-2">
+        {/* Image + Badges container — NO fixed size, sizes to natural image dimensions */}
         <div
           ref={el => { if (el) cardRefs.current.set(wf.id, el); else cardRefs.current.delete(wf.id); }}
           tabIndex={canEdit ? 0 : -1}
@@ -179,7 +179,7 @@ export function WireframeCanvas({
           onClick={onClick}
           onMouseDown={onMouseDown}
           className={[
-            "group relative overflow-hidden rounded-2xl bg-white shadow-sm outline-none",
+            "group relative rounded-2xl bg-white shadow-sm outline-none",
             isTarget && "ring-2 ring-brand cursor-pointer",
             isPinMode && "cursor-crosshair",
             isDrawMode && "cursor-crosshair select-none",
@@ -191,15 +191,16 @@ export function WireframeCanvas({
               key={wf.url}
               src={wf.url}
               alt={wf.name}
-              className="w-full"
+              className="block w-auto h-auto max-w-none rounded-2xl"
               draggable={false}
               onLoad={() => { setImgLoaded(true); calcArrows(); }}
               onError={() => setImgLoaded(false)}
             />
           ) : (
             <div
+              style={{ width: 390, height: 700 }}
               onClick={canEdit ? () => fileRef.current?.click() : undefined}
-              className={`flex aspect-[9/16] flex-col items-center justify-center gap-2 text-sm text-zinc-400 ${canEdit ? "cursor-pointer hover:bg-brand/5" : ""}`}
+              className={`flex flex-col items-center justify-center gap-2 rounded-2xl text-sm text-zinc-400 ${canEdit ? "cursor-pointer hover:bg-brand/5" : ""}`}
             >
               <span className="text-3xl">🖼️</span>
               <span className="font-medium">{wf.name}</span>

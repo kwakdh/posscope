@@ -769,7 +769,7 @@ function PolicyCard({ policy, tabName, onSaved, onDelete, currentUserName, canEd
         <div className="flex" style={{ height: 580 }}>
 
           {/* 무한 캔버스 영역 */}
-          <InfiniteCanvas className="flex-1 min-w-0">
+          <InfiniteCanvas key={mode} className="flex-1 min-w-0" initialScale={mode === "ai" ? 1 : 0.5}>
             {/* AI 모드 */}
             {mode === "ai" && (
               <div className="flex gap-6">
@@ -817,7 +817,8 @@ function PolicyCard({ policy, tabName, onSaved, onDelete, currentUserName, canEd
                       const id = crypto.randomUUID();
                       setWireframes([{ id, url: null, name: title || "화면", badges: [], isModal: false, modalFor: null, order: 0 }]);
                     } : undefined}
-                    className={`flex h-[480px] w-[280px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-zinc-300 bg-white text-zinc-400 ${canEdit ? "cursor-pointer hover:border-brand/40 hover:bg-brand/5" : ""}`}
+                    style={{ width: 390, height: 700 }}
+                    className={`flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-zinc-300 bg-white text-zinc-400 ${canEdit ? "cursor-pointer hover:border-brand/40 hover:bg-brand/5" : ""}`}
                   >
                     <span className="text-3xl">🖼️</span>
                     <span className="text-sm">이미지가 없습니다</span>
