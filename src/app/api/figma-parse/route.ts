@@ -4,9 +4,7 @@ const FIGMA_TOKEN = process.env.FIGMA_ACCESS_TOKEN;
 
 interface FigmaBox { x: number; y: number; width: number; height: number }
 interface FigmaNode {
-  id: string;
-  name: string;
-  type: string;
+  id: string; name: string; type: string;
   characters?: string;
   absoluteBoundingBox?: FigmaBox;
   children?: FigmaNode[];
@@ -28,21 +26,15 @@ function extractText(node: FigmaNode, skipPattern?: RegExp): string {
     .join("\n");
 }
 
-// Group text nodes from a "Descriptions / Policies" frame into rows.
-// Uses Y-gap grouping: consecutive text nodes with gap > GAP_THRESHOLD px = new row.
-// This is robust against Figma table layouts where row numbers sit mid-row.
 const ROW_GAP_THRESHOLD = 30;
 
 function extractDescriptions(frame: FigmaNode): string[] {
   const box = frame.absoluteBoundingBox;
   const texts = allTextNodes(frame);
 
-  const relX = box
-    ? (n: FigmaNode) => (n.absoluteBoundingBox?.x ?? 0) - box.x
-    : () => 999;
+  const relX = box ? (n: FigmaNode) => (n.absoluteBoundingBox?.x ?? 0) - box.x : () => 999;
   const absY = (n: FigmaNode) => n.absoluteBoundingBox?.y ?? 0;
 
-  // Right column content only (x >= 50 relative to frame, or all if no box)
   const rightTexts = texts
     .filter(n => {
       const rx = relX(n);
@@ -56,7 +48,6 @@ function extractDescriptions(frame: FigmaNode): string[] {
 
   if (rightTexts.length === 0) return [];
 
-  // Group by Y gap
   const rows: string[] = [];
   let currentGroup: string[] = [rightTexts[0].characters!.trim()];
 
@@ -70,7 +61,6 @@ function extractDescriptions(frame: FigmaNode): string[] {
     if (t) currentGroup.push(t);
   }
   if (currentGroup.length) rows.push(currentGroup.join("\n"));
-
   return rows;
 }
 
@@ -93,22 +83,11 @@ type FoundFrames = {
 function walkTree(node: FigmaNode, found: FoundFrames) {
   const name = node.name.trim();
 
-  if (/descriptions?\s*\/\s*policies?/i.test(name)) {
-    found.description ??= node;
-    return;
-  }
-  if (/^정책$|^\[정책\]/.test(name) || name === "정책") {
-    found.policy ??= node;
-    return;
-  }
-  if (/UI\s*참고사항|UI팀\s*참고|★\s*UI/i.test(name)) {
-    found.uiNote ??= node;
-    return;
-  }
-  if (/^확인$|고려사항|★\s*고려/i.test(name)) {
-    found.consideration ??= node;
-    return;
-  }
+  if (/descriptions?\s*\/\s*policies?/i.test(name)) { found.description ??= node; return; }
+  if (/^정책$|^\[정책\]/.test(name) || name === "정책") { found.policy ??= node; return; }
+  if (/UI\s*참고사항|UI팀\s*참고|★\s*UI/i.test(name)) { found.uiNote ??= node; return; }
+  if (/^확인$|고려사항|★\s*고려/i.test(name)) { found.consideration ??= node; return; }
+
   if (isLargeUIFrame(node)) {
     found.wireframes.push(node);
     // continue recursing — circled children (①②③) may be nested inside a larger parent frame
@@ -118,9 +97,7 @@ function walkTree(node: FigmaNode, found: FoundFrames) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!FIGMA_TOKEN) {
-    return NextResponse.json({ error: "Figma 토큰이 설정되지 않았습니다." }, { status: 500 });
-  }
+  if (!FIGMA_TOKEN) return NextResponse.json({ error: "Figma 토큰이 설정되지 않았습니다." }, { status: 500 });
 
   const body = await req.json().catch(() => ({}));
   const { url } = body as { url?: string };
@@ -129,12 +106,11 @@ export async function POST(req: NextRequest) {
   const fileKeyMatch = url.match(/figma\.com\/(?:design|file)\/([a-zA-Z0-9_-]+)/);
   const nodeIdMatch = url.match(/node-id=([^&]+)/);
   if (!fileKeyMatch) return NextResponse.json({ error: "올바른 피그마 URL이 아닙니다." }, { status: 400 });
-  if (!nodeIdMatch) return NextResponse.json({ error: "URL에 node-id가 필요합니다. 특정 프레임을 선택한 후 공유 URL을 사용하세요." }, { status: 400 });
+  if (!nodeIdMatch) return NextResponse.json({ error: "URL에 node-id가 필요합니다." }, { status: 400 });
 
   const fileKey = fileKeyMatch[1];
   const nodeId = decodeURIComponent(nodeIdMatch[1]).replace(/-/g, ":");
 
-  // Fetch full node tree from Figma
   const nodesRes = await fetch(
     `https://api.figma.com/v1/files/${fileKey}/nodes?ids=${encodeURIComponent(nodeId)}`,
     { headers: { "X-Figma-Token": FIGMA_TOKEN } }
@@ -148,68 +124,69 @@ export async function POST(req: NextRequest) {
   const root: FigmaNode | undefined = nodesData.nodes?.[nodeId]?.document;
   if (!root) return NextResponse.json({ error: "노드를 찾을 수 없습니다." }, { status: 404 });
 
-  // Walk tree to classify content
   const found: FoundFrames = { wireframes: [], description: null, policy: null, uiNote: null, consideration: null };
   walkTree(root, found);
 
-  // Prefer circled-number frames (①②③...) — these are the main screen wireframes.
-  // Other large frames (settings modals, detail views, etc.) are secondary.
+  // Prefer circled-number frames (①②③...) — these are the main screen wireframes
   const circled = found.wireframes.filter(w => /[①②③④⑤⑥⑦⑧⑨⑩]/.test(w.name));
-  if (circled.length > 0) {
-    found.wireframes = circled;
-  }
-  // Sort by x position (left to right)
-  found.wireframes.sort((a, b) =>
-    (a.absoluteBoundingBox?.x ?? 0) - (b.absoluteBoundingBox?.x ?? 0)
-  );
+  if (circled.length > 0) found.wireframes = circled;
+  found.wireframes.sort((a, b) => (a.absoluteBoundingBox?.x ?? 0) - (b.absoluteBoundingBox?.x ?? 0));
 
-  // Extract text content
   const descriptions = found.description ? extractDescriptions(found.description) : [];
   const policyNote = found.policy ? extractText(found.policy, /^정책$/) : "";
   const uiNote = found.uiNote ? extractText(found.uiNote, /^(UI\s*참고사항|★\s*UI\s*참고사항)$/i) : "";
   const considerationNote = found.consideration ? extractText(found.consideration, /^(확인|고려사항|★\s*고려사항)$/i) : "";
 
-  // Export main wireframe image (first/largest frame)
-  let imageBase64 = "";
-  let imageMimeType = "image/png";
-  let wireframeName = "";
+  // Batch export all wireframe images in a single Figma API call
+  type WireframeSection = { name: string; imageBase64: string; imageMimeType: string };
+  const sections: WireframeSection[] = found.wireframes.map(wf => ({
+    name: wf.name, imageBase64: "", imageMimeType: "image/png"
+  }));
 
   if (found.wireframes.length > 0) {
-    const mainWf = found.wireframes[0];
-    wireframeName = mainWf.name;
-    const exportId = mainWf.id;
-
     try {
+      const exportIds = found.wireframes.map(w => w.id);
       const exportRes = await fetch(
-        `https://api.figma.com/v1/images/${fileKey}?ids=${encodeURIComponent(exportId)}&format=png&scale=2`,
+        `https://api.figma.com/v1/images/${fileKey}?ids=${exportIds.map(encodeURIComponent).join(",")}&format=png&scale=2`,
         { headers: { "X-Figma-Token": FIGMA_TOKEN } }
       );
-
       if (exportRes.ok) {
         const exportData = await exportRes.json();
-        const imgUrl = exportData.images?.[exportId] ?? exportData.images?.[exportId.replace(":", "-")];
-        if (imgUrl) {
-          const imgRes = await fetch(imgUrl);
-          if (imgRes.ok) {
+        const imageUrls = exportData.images as Record<string, string>;
+
+        // Download all images in parallel
+        await Promise.all(found.wireframes.map(async (wf, i) => {
+          const imgUrl = imageUrls[wf.id] ?? imageUrls[wf.id.replace(":", "-")];
+          if (!imgUrl) return;
+          try {
+            const imgRes = await fetch(imgUrl);
+            if (!imgRes.ok) return;
             const buf = await imgRes.arrayBuffer();
-            imageBase64 = Buffer.from(buf).toString("base64");
-            imageMimeType = imgRes.headers.get("content-type") ?? "image/png";
-          }
-        }
+            sections[i] = {
+              name: wf.name,
+              imageBase64: Buffer.from(buf).toString("base64"),
+              imageMimeType: imgRes.headers.get("content-type") ?? "image/png",
+            };
+          } catch { /* skip this image */ }
+        }));
       }
     } catch (e) {
-      console.error("Image export failed:", e);
+      console.error("Batch image export failed:", e);
     }
   }
 
   return NextResponse.json({
-    wireframeName,
-    wireframeCount: found.wireframes.length,
-    imageBase64,
-    imageMimeType,
+    // Backwards compat (single wireframe mode)
+    wireframeName: sections[0]?.name ?? "",
+    wireframeCount: sections.length,
+    imageBase64: sections[0]?.imageBase64 ?? "",
+    imageMimeType: sections[0]?.imageMimeType ?? "image/png",
+    // Shared content
     descriptions,
     policyNote,
     uiNote,
     considerationNote,
+    // All wireframes (for bulk import)
+    sections,
   });
 }
