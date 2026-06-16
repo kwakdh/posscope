@@ -94,15 +94,18 @@ export function InfiniteCanvas({
       }}
       onMouseDown={onMouseDown}
     >
-      {/* Dot grid background */}
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{
-          backgroundImage: "radial-gradient(circle, #c4c4c4 1px, transparent 1px)",
-          backgroundSize: `${gridPx}px ${gridPx}px`,
-          backgroundPosition: `${t.x % gridPx}px ${t.y % gridPx}px`,
-        }}
-      />
+      {/* Dot grid background — hidden below 25% to avoid moiré artifacts */}
+      {t.scale > 0.25 && (
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            backgroundImage: "radial-gradient(circle, #c4c4c4 1px, transparent 1px)",
+            backgroundSize: `${gridPx}px ${gridPx}px`,
+            backgroundPosition: `${t.x % gridPx}px ${t.y % gridPx}px`,
+            willChange: "background-position, background-size",
+          }}
+        />
+      )}
 
       {/* Transformed canvas */}
       <div
@@ -113,6 +116,8 @@ export function InfiniteCanvas({
           transform: `translate(${t.x}px, ${t.y}px) scale(${t.scale})`,
           transformOrigin: "0 0",
           willChange: "transform",
+          backfaceVisibility: "hidden",
+          WebkitBackfaceVisibility: "hidden",
         }}
       >
         {children}

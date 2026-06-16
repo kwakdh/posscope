@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { WireframeItem, FlowStep } from "@/types/policy";
 
 const BADGE_COLORS = ["#ef4444", "#3b82f6", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899"];
-const bc = (n: number) => BADGE_COLORS[(n - 1) % BADGE_COLORS.length];
+// 부모 핀 번호(하이픈 앞자리)로 색상 결정 — "3-1"은 "3"과 같은 색
+const bc = (pin: string) => {
+  const n = parseInt(pin.split("-")[0], 10) || 1;
+  return BADGE_COLORS[(n - 1) % BADGE_COLORS.length];
+};
 
 type Arrow = { id: string; d: string; label: string; mx: number; my: number };
 
@@ -14,30 +18,28 @@ type Props = {
   onWireframesChange: (wfs: WireframeItem[]) => void;
   onFlowStepsChange: (steps: FlowStep[]) => void;
   onUpload: (wfId: string, file: File) => Promise<void>;
-  hoveredBadgeNumber?: number | null;
-  onBadgeHover?: (n: number | null) => void;
+  activePinNumber?: string | null;
+  hoveredPinNumber?: string | null;
+  onBadgeHover?: (pin: string | null) => void;
+  onBadgeClick?: (pin: string) => void;
   canEdit: boolean;
 };
 
 export function WireframeCanvas({
   wireframes, flowSteps, onWireframesChange, onFlowStepsChange,
-  onUpload, hoveredBadgeNumber, onBadgeHover, canEdit,
+  onUpload, activePinNumber, hoveredPinNumber, onBadgeHover, onBadgeClick, canEdit,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [arrows, setArrows] = useState<Arrow[]>([]);
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
-  const [pinModeId, setPinModeId] = useState<string | null>(null);
-  const [drawModeId, setDrawModeId] = useState<string | null>(null);
-  const [drawRect, setDrawRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
-  const [dragging, setDragging] = useState<{ wfId: string; badgeId: string } | null>(null);
-  const drawStart = useRef<{ x: number; y: number } | null>(null);
+  // imgLoaded는 WireframeCard 리마운트 시에도 보존되도록 부모에서 관리
+  const [imgLoadedMap, setImgLoadedMap] = useState<Record<string, boolean>>({});
 
   const mainWfs = wireframes.filter(w => !w.isModal);
   const modals = wireframes.filter(w => w.isModal);
 
-  // ── Transform-safe arrow calculation (offsetLeft/Top, not getBoundingClientRect) ──
   const calcArrows = () => {
     const container = containerRef.current;
     if (!container) return;
@@ -57,15 +59,6 @@ export function WireframeCanvas({
 
   useLayoutEffect(() => { calcArrows(); }, [wireframes, flowSteps]);
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-  function relPos(el: HTMLElement, e: MouseEvent | React.MouseEvent) {
-    const r = el.getBoundingClientRect();
-    return {
-      x: Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width) * 100)),
-      y: Math.min(100, Math.max(0, ((e.clientY - r.top) / r.height) * 100)),
-    };
-  }
-
   function updateWf(id: string, patch: Partial<WireframeItem>) {
     onWireframesChange(wireframes.map(w => w.id === id ? { ...w, ...patch } : w));
   }
@@ -83,83 +76,18 @@ export function WireframeCanvas({
     setConnectingFrom(null);
   }
 
-  // ── Badge drag ──────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!dragging) return;
-    const { wfId, badgeId } = dragging;
-    const el = cardRefs.current.get(wfId);
-    if (!el) return;
-    const move = (e: MouseEvent) => {
-      const pos = relPos(el, e);
-      const wf = wireframes.find(w => w.id === wfId);
-      if (!wf) return;
-      updateWf(wfId, { badges: wf.badges.map(b => b.id === badgeId ? { ...b, ...pos } : b) });
-    };
-    const up = () => setDragging(null);
-    document.addEventListener("mousemove", move);
-    document.addEventListener("mouseup", up);
-    return () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); };
-  }, [dragging, wireframes]);
-
-  // ── Bounding box draw ───────────────────────────────────────────────────
-  useEffect(() => {
-    if (!drawModeId) return;
-    const wfId = drawModeId;
-    const el = cardRefs.current.get(wfId);
-    if (!el) return;
-    const move = (e: MouseEvent) => {
-      if (!drawStart.current) return;
-      const pos = relPos(el, e);
-      const { x: sx, y: sy } = drawStart.current;
-      setDrawRect({ x: Math.min(sx, pos.x), y: Math.min(sy, pos.y), w: Math.abs(pos.x - sx), h: Math.abs(pos.y - sy) });
-    };
-    const up = (e: MouseEvent) => {
-      const start = drawStart.current;
-      drawStart.current = null;
-      if (start) {
-        const pos = relPos(el, e);
-        const x = Math.min(start.x, pos.x), y = Math.min(start.y, pos.y);
-        const w = Math.abs(pos.x - start.x), h = Math.abs(pos.y - start.y);
-        if (w > 2 && h > 2) {
-          const wf = wireframes.find(w => w.id === wfId);
-          if (wf) {
-            const nextNum = wf.badges.length ? Math.max(...wf.badges.map(b => b.number)) + 1 : 1;
-            updateWf(wfId, { badges: [...wf.badges, { id: crypto.randomUUID(), number: nextNum, x, y, w, h }] });
-          }
-        }
-      }
-      setDrawRect(null);
-      setDrawModeId(null);
-    };
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { drawStart.current = null; setDrawRect(null); setDrawModeId(null); } };
-    document.addEventListener("mousemove", move);
-    document.addEventListener("mouseup", up);
-    document.addEventListener("keydown", esc);
-    return () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); document.removeEventListener("keydown", esc); };
-  }, [drawModeId, wireframes]);
-
-  // ── WireframeCard ──────────────────────────────────────────────────────
+  // ── WireframeCard (인라인 함수 — imgLoadedMap을 부모에서 관리해 리마운트 대응) ──
   function WireframeCard({ wf }: { wf: WireframeItem }) {
     const [menuOpen, setMenuOpen] = useState(false);
-    const [imgLoaded, setImgLoaded] = useState(false); // ← 배지 렌더 타이밍 제어
+    const imgLoaded = imgLoadedMap[wf.id] ?? false;
+    const setImgLoaded = (v: boolean) =>
+      setImgLoadedMap(prev => ({ ...prev, [wf.id]: v }));
     const fileRef = useRef<HTMLInputElement>(null);
     const isTarget = !!connectingFrom && connectingFrom !== wf.id;
-    const isPinMode = pinModeId === wf.id;
-    const isDrawMode = drawModeId === wf.id;
 
     function onClick(e: React.MouseEvent<HTMLDivElement>) {
       setMenuOpen(false);
-      if (connectingFrom) { confirmConnect(wf.id); return; }
-      if (isPinMode) {
-        const pos = relPos(e.currentTarget, e);
-        const nextNum = wf.badges.length ? Math.max(...wf.badges.map(b => b.number)) + 1 : 1;
-        updateWf(wf.id, { badges: [...wf.badges, { id: crypto.randomUUID(), number: nextNum, ...pos }] });
-        setPinModeId(null);
-      }
-    }
-
-    function onMouseDown(e: React.MouseEvent<HTMLDivElement>) {
-      if (isDrawMode) { e.preventDefault(); drawStart.current = relPos(e.currentTarget, e); }
+      if (connectingFrom) { confirmConnect(wf.id); }
     }
 
     function onPaste(e: React.ClipboardEvent) {
@@ -171,18 +99,14 @@ export function WireframeCanvas({
 
     return (
       <div className="flex shrink-0 flex-col gap-2">
-        {/* Image + Badges container — NO fixed size, sizes to natural image dimensions */}
         <div
           ref={el => { if (el) cardRefs.current.set(wf.id, el); else cardRefs.current.delete(wf.id); }}
           tabIndex={canEdit ? 0 : -1}
           onPaste={onPaste}
           onClick={onClick}
-          onMouseDown={onMouseDown}
           className={[
             "group relative rounded-2xl bg-white shadow-sm outline-none",
             isTarget && "ring-2 ring-brand cursor-pointer",
-            isPinMode && "cursor-crosshair",
-            isDrawMode && "cursor-crosshair select-none",
           ].filter(Boolean).join(" ")}
         >
           {wf.url ? (
@@ -193,6 +117,7 @@ export function WireframeCanvas({
               alt={wf.name}
               className="block w-auto h-auto max-w-none rounded-2xl"
               draggable={false}
+              style={{ imageRendering: "auto", backfaceVisibility: "hidden" }}
               onLoad={() => { setImgLoaded(true); calcArrows(); }}
               onError={() => setImgLoaded(false)}
             />
@@ -208,55 +133,58 @@ export function WireframeCanvas({
             </div>
           )}
 
-          {/* ── 배지: 이미지 로드 완료 후에만 렌더 (찌그러짐 버그 방지) ── */}
-          {imgLoaded && wf.badges.map(b =>
-            b.w !== undefined && b.h !== undefined ? (
+          {/* ── 투명 핫스팟: 이미지 내 기존 배지 숫자 위에 올라가는 클릭 영역 ── */}
+          {imgLoaded && wf.badges.map(b => {
+            const color = bc(b.pinNumber);
+            const isActive = activePinNumber === b.pinNumber;
+            const isHovered = hoveredPinNumber === b.pinNumber;
+
+            if (b.w !== undefined && b.h !== undefined) {
+              // 바운딩 박스 핫스팟 — 이미지 내 영역 표시 위에 오버레이
+              return (
+                <div
+                  key={b.id}
+                  style={{
+                    left: `${b.x}%`, top: `${b.y}%`,
+                    width: `${b.w}%`, height: `${b.h}%`,
+                    backgroundColor: isActive ? color + "20" : isHovered ? color + "10" : "transparent",
+                    boxShadow: isActive
+                      ? `inset 0 0 0 2px ${color}, 0 0 0 2px ${color}40`
+                      : isHovered
+                      ? `inset 0 0 0 1.5px ${color}80`
+                      : undefined,
+                    zIndex: isActive ? 20 : isHovered ? 15 : 10,
+                  }}
+                  onClick={e => { e.stopPropagation(); onBadgeClick?.(b.pinNumber); }}
+                  onMouseEnter={() => onBadgeHover?.(b.pinNumber)}
+                  onMouseLeave={() => onBadgeHover?.(null)}
+                  className="absolute cursor-pointer transition-all duration-150 rounded-sm"
+                />
+              );
+            }
+
+            // 포인트 핫스팟 — 이미지 내 원형 배지 위에 오버레이 (투명, 링만 표시)
+            return (
               <div
                 key={b.id}
+                onClick={e => { e.stopPropagation(); onBadgeClick?.(b.pinNumber); }}
+                onMouseEnter={() => onBadgeHover?.(b.pinNumber)}
+                onMouseLeave={() => onBadgeHover?.(null)}
                 style={{
                   left: `${b.x}%`, top: `${b.y}%`,
-                  width: `${b.w}%`, height: `${b.h}%`,
-                  borderColor: bc(b.number),
-                  backgroundColor: hoveredBadgeNumber === b.number ? bc(b.number) + "18" : undefined,
+                  transform: "translate(-50%, -50%)",
+                  backgroundColor: "transparent",
+                  boxShadow: isActive
+                    ? `0 0 0 3px ${color}, 0 0 8px ${color}60`
+                    : isHovered
+                    ? `0 0 0 2px ${color}90`
+                    : undefined,
+                  zIndex: isActive ? 30 : isHovered ? 20 : 10,
                 }}
-                onMouseEnter={() => onBadgeHover?.(b.number)}
-                onMouseLeave={() => onBadgeHover?.(null)}
-                className="absolute border-2 border-dashed transition-colors"
-              >
-                <span style={{ backgroundColor: bc(b.number) }} className="absolute -left-px -top-px px-1 py-0.5 text-[10px] font-bold text-white">{b.number}</span>
-                {canEdit && (
-                  <button type="button"
-                    onMouseDown={e => e.stopPropagation()}
-                    onClick={e => { e.stopPropagation(); updateWf(wf.id, { badges: wf.badges.filter(x => x.id !== b.id) }); }}
-                    style={{ color: bc(b.number) }}
-                    className="absolute -right-2 -top-2 hidden h-4 w-4 items-center justify-center rounded-full bg-white text-[10px] shadow group-hover:flex">✕</button>
-                )}
-              </div>
-            ) : (
-              <div
-                key={b.id}
-                onMouseDown={canEdit ? e => { e.stopPropagation(); setDragging({ wfId: wf.id, badgeId: b.id }); } : undefined}
-                onMouseEnter={() => onBadgeHover?.(b.number)}
-                onMouseLeave={() => onBadgeHover?.(null)}
-                style={{ left: `${b.x}%`, top: `${b.y}%`, backgroundColor: bc(b.number) }}
-                className={`group/badge absolute -translate-x-1/2 -translate-y-1/2 flex h-7 w-7 select-none items-center justify-center rounded-md text-sm font-bold text-white shadow-md ${canEdit ? "cursor-move" : ""}`}
-              >
-                {b.number}
-                {canEdit && (
-                  <button type="button"
-                    onMouseDown={e => e.stopPropagation()}
-                    onClick={e => { e.stopPropagation(); updateWf(wf.id, { badges: wf.badges.filter(x => x.id !== b.id) }); }}
-                    className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 items-center justify-center rounded-full bg-white text-[10px] text-red-500 shadow group-hover/badge:flex">✕</button>
-                )}
-              </div>
-            )
-          )}
-
-          {/* Draw preview */}
-          {isDrawMode && drawRect && (
-            <div className="pointer-events-none absolute z-20 border-2 border-dashed border-brand bg-brand/10"
-              style={{ left: `${drawRect.x}%`, top: `${drawRect.y}%`, width: `${drawRect.w}%`, height: `${drawRect.h}%` }} />
-          )}
+                className="absolute h-9 w-9 rounded-full cursor-pointer transition-all duration-150"
+              />
+            );
+          })}
 
           {/* Controls */}
           {canEdit && wf.url && (
@@ -265,23 +193,14 @@ export function WireframeCanvas({
                 className="flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-xs text-white backdrop-blur-sm hover:bg-black/70">⚙</button>
               {menuOpen && (
                 <div onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}
-                  className="absolute right-0 top-8 z-30 flex w-44 flex-col overflow-hidden rounded-xl bg-white py-1 shadow-xl">
+                  className="absolute right-0 top-8 z-30 flex w-36 flex-col overflow-hidden rounded-xl bg-white py-1 shadow-xl">
                   <button onClick={() => { setMenuOpen(false); fileRef.current?.click(); }} className="px-3 py-2 text-left text-sm hover:bg-zinc-50">이미지 교체</button>
-                  <button onClick={() => { setMenuOpen(false); setPinModeId(wf.id); }} className="px-3 py-2 text-left text-sm hover:bg-zinc-50">번호 찍기</button>
-                  <button onClick={() => { setMenuOpen(false); setDrawModeId(wf.id); }} className="px-3 py-2 text-left text-sm hover:bg-zinc-50">영역 표시 추가</button>
                   <button onClick={() => { setMenuOpen(false); updateWf(wf.id, { url: null, badges: [] }); setImgLoaded(false); }} className="px-3 py-2 text-left text-sm text-red-500 hover:bg-red-50">이미지 삭제</button>
                 </div>
               )}
             </div>
           )}
 
-          {(isPinMode || isDrawMode) && (
-            <div className="pointer-events-none absolute inset-0 flex items-start justify-center pt-3">
-              <span className="rounded-full bg-black/60 px-3 py-1.5 text-xs font-bold text-white backdrop-blur-sm">
-                {isPinMode ? "클릭 → 번호 찍기 · ESC 취소" : "드래그 → 영역 표시 · ESC 취소"}
-              </span>
-            </div>
-          )}
           {isTarget && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-brand/10">
               <span className="rounded-full bg-brand px-3 py-1.5 text-xs font-bold text-white">여기로 연결</span>
@@ -322,9 +241,7 @@ export function WireframeCanvas({
 
   return (
     <>
-      {/* Canvas (no overflow — lives inside InfiniteCanvas) */}
       <div ref={containerRef} className="relative flex gap-8 pb-4">
-        {/* SVG flow arrows — offset-based coords (transform-safe) */}
         {arrows.length > 0 && (
           <svg className="pointer-events-none absolute inset-0 z-10 overflow-visible" style={{ width: "100%", height: "100%" }}>
             <defs>
@@ -356,7 +273,6 @@ export function WireframeCanvas({
         )}
       </div>
 
-      {/* Flow step pills */}
       {flowSteps.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {flowSteps.map(s => (
@@ -376,7 +292,6 @@ export function WireframeCanvas({
         </div>
       )}
 
-      {/* Modal overlay */}
       {activeModalData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setActiveModal(null)}>
           <div className="relative max-w-xs overflow-hidden rounded-3xl shadow-2xl" onClick={e => e.stopPropagation()}>

@@ -2,33 +2,33 @@
 
 export type PolicyMode = "image" | "figma" | "ai";
 
-/** 이미지 위 번호 배지 또는 바운딩 박스 */
+/** 이미지 위 번호 배지 — pinNumber는 "1", "3-1", "3-2" 같은 문자열 */
 export type BadgeMark = {
   id: string;
-  number: number;
-  x: number;   // % (0~100) of wireframe width
-  y: number;   // % (0~100) of wireframe height
-  w?: number;  // % width  (바운딩 박스일 때만)
-  h?: number;  // % height (바운딩 박스일 때만)
+  pinNumber: string;  // "1", "3-1", "3-2" …
+  x: number;         // % (0~100) of wireframe width
+  y: number;         // % (0~100) of wireframe height
+  w?: number;        // % width  (바운딩 박스일 때만)
+  h?: number;        // % height (바운딩 박스일 때만)
 };
 
 /** N:1 구조의 와이어프레임 항목 */
 export type WireframeItem = {
   id: string;
-  url: string | null;      // Storage public URL
+  url: string | null;
   name: string;
   badges: BadgeMark[];
-  isModal: boolean;        // true면 팝업/모달 처리
-  modalFor: string | null; // 어느 WireframeItem 위에 올라가는 모달인지 (ID)
+  isModal: boolean;
+  modalFor: string | null;
   order: number;
 };
 
 /** 와이어프레임 사이의 화면 흐름 */
 export type FlowStep = {
   id: string;
-  from: string;   // WireframeItem.id
-  to: string;     // WireframeItem.id
-  label: string;  // "Step 1", "로그인 성공" 등
+  from: string;
+  to: string;
+  label: string;
 };
 
 /** 우측 설명 영역 표(Table) */
@@ -45,7 +45,21 @@ export type AIScreen = {
   name: string;
   html: string;
   order: number;
-  flowTo: string[]; // 다음으로 이동할 AIScreen.id 배열
+  flowTo: string[];
+};
+
+/** 디스크립션 하위 항목 (3-1, 3-2 …) */
+export type DescSubItem = {
+  pinNumber: string;  // "3-1", "3-2" …
+  text: string;
+};
+
+/** 디스크립션 그룹 (부모 번호 + 하위 항목 배열) */
+export type DescGroup = {
+  id: string;
+  pinNumber: string;      // "1", "2", "3" … (부모)
+  title: string;          // 부모 정책 텍스트
+  subItems: DescSubItem[];
 };
 
 /** 정책/기획서 메인 데이터 (DB policies 테이블 row) */
@@ -53,45 +67,73 @@ export type Policy = {
   id: string;
   item_type: string;
   item_id: string;
-  kind: string;           // 탭 ID ("current" | "proposal" | custom UUID)
+  kind: string;
   title: string;
   mode: PolicyMode;
-  // ── N:1 와이어프레임 ──
   wireframes: WireframeItem[];
   flow_steps: FlowStep[];
-  // ── 우측 설명 영역 ──
-  description_items: string[];
+  description_groups: DescGroup[];
+  description_items: string[];   // 레거시 (하위 호환)
   policy_note: string;
   ui_note: string;
   consideration_note: string;
   tables: TableData[];
-  // ── AI 모드 ──
   ai_screens: AIScreen[];
-  // ── 레거시 (하위 호환) ──
   wireframe_url: string | null;
   image_badges: BadgeMark[];
-  // ── 메타 ──
   sort_order: number;
   author_name: string | null;
   updated_at: string | null;
 };
 
-/** DB row를 클라이언트 Policy 타입으로 정규화 (레거시 단일 이미지 → wireframes 배열) */
+/** DB row를 클라이언트 Policy 타입으로 정규화 */
 export function normalizePolicy(raw: Record<string, unknown>): Policy {
-  const p = raw as Policy;
-  let wireframes: WireframeItem[] = Array.isArray(p.wireframes) && p.wireframes.length > 0
-    ? p.wireframes
-    : p.wireframe_url
+  const p = raw as Policy & { description_groups?: DescGroup[] };
+
+  // BadgeMark 레거시 number → pinNumber 마이그레이션
+  function migrateBadges(badges: unknown[]): BadgeMark[] {
+    return badges.map(b => {
+      const badge = b as BadgeMark & { number?: number };
+      return {
+        ...badge,
+        pinNumber: badge.pinNumber ?? String(badge.number ?? "?"),
+      };
+    });
+  }
+
+  let wireframes: WireframeItem[] =
+    Array.isArray(p.wireframes) && p.wireframes.length > 0
+      ? p.wireframes.map(wf => ({
+          ...wf,
+          badges: Array.isArray(wf.badges) ? migrateBadges(wf.badges) : [],
+        }))
+      : p.wireframe_url
       ? [{
           id: `legacy-${p.id}`,
           url: p.wireframe_url,
           name: p.title || "화면",
-          badges: Array.isArray(p.image_badges) ? p.image_badges : [],
+          badges: Array.isArray(p.image_badges) ? migrateBadges(p.image_badges) : [],
           isModal: false,
           modalFor: null,
           order: 0,
         }]
       : [];
+
+  // description_groups: DB 값 우선, 없으면 description_items에서 변환
+  let descGroups: DescGroup[] = Array.isArray(p.description_groups)
+    ? p.description_groups
+    : [];
+
+  if (descGroups.length === 0 && Array.isArray(p.description_items)) {
+    descGroups = p.description_items
+      .filter(s => s && s.trim())
+      .map((text, i) => ({
+        id: `desc_group_${i + 1}`,
+        pinNumber: String(i + 1),
+        title: text,
+        subItems: [],
+      }));
+  }
 
   return {
     ...p,
@@ -101,6 +143,7 @@ export function normalizePolicy(raw: Record<string, unknown>): Policy {
     tables: Array.isArray(p.tables) ? p.tables : [],
     ai_screens: Array.isArray(p.ai_screens) ? p.ai_screens : [],
     description_items: Array.isArray(p.description_items) ? p.description_items : [],
-    image_badges: Array.isArray(p.image_badges) ? p.image_badges : [],
+    description_groups: descGroups,
+    image_badges: Array.isArray(p.image_badges) ? migrateBadges(p.image_badges) : [],
   };
 }

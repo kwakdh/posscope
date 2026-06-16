@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { InfiniteCanvas } from "@/components/infinite-canvas";
 import { WireframeCanvas } from "@/components/wireframe-canvas";
 import { TableEditor } from "@/components/table-editor";
-import type { Policy, PolicyMode, WireframeItem, FlowStep, TableData, AIScreen, BadgeMark } from "@/types/policy";
+import type { Policy, PolicyMode, WireframeItem, FlowStep, TableData, AIScreen, DescGroup } from "@/types/policy";
 import { normalizePolicy } from "@/types/policy";
 
 type ItemType = "category" | "feature";
@@ -23,7 +23,7 @@ function emptyPolicy(itemType: ItemType, itemId: string, kind: string): Policy {
     id: "", item_type: itemType, item_id: itemId, kind,
     title: "", mode: "image",
     wireframes: [], flow_steps: [],
-    description_items: [""], policy_note: "", ui_note: "", consideration_note: "",
+    description_groups: [], description_items: [], policy_note: "", ui_note: "", consideration_note: "",
     tables: [], ai_screens: [],
     wireframe_url: null, image_badges: [],
     sort_order: 0, author_name: null, updated_at: null,
@@ -264,9 +264,9 @@ export function FeatureDetail({
         setBulkImporting(false); return;
       }
       const parsed = await res.json();
-      const { sections, descriptions, policyNote, uiNote, considerationNote } = parsed as {
-        sections: { name: string; imageUrl: string; imageBase64: string; imageMimeType: string; badges: BadgeMark[]; isModal: boolean }[];
-        descriptions: string[]; policyNote: string; uiNote: string; considerationNote: string;
+      const { sections, descriptionGroups: parsedGroups, descriptions, policyNote, uiNote, considerationNote } = parsed as {
+        sections: { name: string; imageUrl: string; imageBase64: string; imageMimeType: string; badges: WireframeItem["badges"]; isModal: boolean }[];
+        descriptionGroups: DescGroup[]; descriptions: string[]; policyNote: string; uiNote: string; considerationNote: string;
       };
       if (!sections?.length) { setBulkError("가져올 와이어프레임이 없습니다."); setBulkImporting(false); return; }
 
@@ -283,6 +283,7 @@ export function FeatureDetail({
         const { data: row, error: err } = await sb.from("policies").insert({
           item_type: itemType, item_id: itemId, kind: tab.id,
           title: sec.name, mode: "figma",
+          description_groups: i === 0 ? (parsedGroups?.length ? parsedGroups : descriptions.map((t, idx) => ({ id: `desc_group_${idx + 1}`, pinNumber: String(idx + 1), title: t, subItems: [] }))) : [],
           description_items: i === 0 ? descriptions : [],
           policy_note: i === 0 ? policyNote : "",
           ui_note: i === 0 ? uiNote : "",
@@ -417,6 +418,8 @@ export function FeatureDetail({
             key={policy.id || "empty"}
             policy={policy}
             tabName={activeTabMeta.name}
+            itemType={itemType}
+            itemId={itemId}
             onSaved={updated => setPolicies(prev =>
               prev.map(p => (p.id && p.id === updated.id) || (!p.id && !policy.id) ? updated : p)
             )}
@@ -440,8 +443,8 @@ export function FeatureDetail({
 // PolicyCard
 // ──────────────────────────────────────────────────────────────────────────────
 
-function PolicyCard({ policy, tabName, onSaved, onDelete, currentUserName, canEdit }: {
-  policy: Policy; tabName: string;
+function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, currentUserName, canEdit }: {
+  policy: Policy; tabName: string; itemType: ItemType; itemId: string;
   onSaved: (p: Policy) => void;
   onDelete?: () => void;
   currentUserName: string; canEdit: boolean;
@@ -450,7 +453,13 @@ function PolicyCard({ policy, tabName, onSaved, onDelete, currentUserName, canEd
   const [mode, setMode] = useState<PolicyMode>(policy.mode);
   const [wireframes, setWireframes] = useState<WireframeItem[]>(policy.wireframes);
   const [flowSteps, setFlowSteps] = useState<FlowStep[]>(policy.flow_steps);
-  const [descItems, setDescItems] = useState<string[]>(policy.description_items.length ? policy.description_items : [""]);
+  const [descGroups, setDescGroups] = useState<DescGroup[]>(
+    policy.description_groups.length
+      ? policy.description_groups
+      : [{ id: crypto.randomUUID(), pinNumber: "1", title: "", subItems: [] }]
+  );
+  const [activePinNumber, setActivePinNumber] = useState<string | null>(null);
+  const [hoveredPinNumber, setHoveredPinNumber] = useState<string | null>(null);
   const [policyNote, setPolicyNote] = useState(policy.policy_note);
   const [uiNote, setUiNote] = useState(policy.ui_note);
   const [considerNote, setConsiderNote] = useState(policy.consideration_note);
@@ -459,7 +468,6 @@ function PolicyCard({ policy, tabName, onSaved, onDelete, currentUserName, canEd
   const [showPolicy, setShowPolicy] = useState(!!policy.policy_note);
   const [showUi, setShowUi] = useState(!!policy.ui_note);
   const [showConsider, setShowConsider] = useState(!!policy.consideration_note);
-  const [hoveredBadgeNum, setHoveredBadgeNum] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -499,13 +507,21 @@ function PolicyCard({ policy, tabName, onSaved, onDelete, currentUserName, canEd
     policy.kind === "proposal" ? "bg-brand/10 text-brand" :
     "bg-purple-100 text-purple-700";
 
+  // ── 배지 ↔ 디스크립션 양방향 싱크 ────────────────────────────────────────
+  function handleBadgeClick(pin: string) {
+    setActivePinNumber(prev => prev === pin ? null : pin);
+    // 하이픈이 있으면 하위 항목, 없으면 그룹 헤더로 스크롤
+    const selector = pin.includes("-") ? `[data-pin-sub="${pin}"]` : `[data-pin-group="${pin}"]`;
+    document.querySelector<HTMLElement>(selector)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
   // ── persist ────────────────────────────────────────────────────────────
   async function persist(changes: Partial<Policy>): Promise<Policy | null> {
     const sb = createClient();
     const stamp = { author_name: currentUserName, updated_at: new Date().toISOString() };
     if (!policy.id) {
       const { data, error: e } = await sb.from("policies")
-        .insert({ item_type: policy.item_type, item_id: policy.item_id, kind: policy.kind, mode, title, description_items: descItems, policy_note: policyNote, ui_note: uiNote, consideration_note: considerNote, wireframes, flow_steps: flowSteps, tables, ai_screens: aiScreens, image_badges: [], wireframe_url: null, ...changes, ...stamp })
+        .insert({ item_type: policy.item_type, item_id: policy.item_id, kind: policy.kind, mode, title, description_groups: descGroups, description_items: [], policy_note: policyNote, ui_note: uiNote, consideration_note: considerNote, wireframes, flow_steps: flowSteps, tables, ai_screens: aiScreens, image_badges: [], wireframe_url: null, ...changes, ...stamp })
         .select("*").single();
       if (!e && data) { const p = normalizePolicy(data); onSaved(p); return p; }
       return null;
@@ -547,8 +563,9 @@ function PolicyCard({ policy, tabName, onSaved, onDelete, currentUserName, canEd
     if (!figmaUrl.trim()) return;
     setError(null); setFigmaImporting(true); setShowFigmaInput(false); setFigmaProgress(0);
 
+    // Phase 1: 0→40% (노드 분석)
     const animInterval = setInterval(() => {
-      setFigmaProgress(prev => prev < 45 ? prev + 3 : prev);
+      setFigmaProgress(prev => prev < 38 ? prev + 2 : prev);
     }, 150);
 
     try {
@@ -560,12 +577,14 @@ function PolicyCard({ policy, tabName, onSaved, onDelete, currentUserName, canEd
       if (!res.ok) { setError((await res.json().catch(() => ({}))).error ?? "피그마를 가져오지 못했습니다."); setFigmaImporting(false); return; }
 
       const parsed = await res.json();
-      const { imageUrl: newImgUrl, imageBase64, imageMimeType, descriptions, policyNote: newPN, uiNote: newUN, considerationNote: newCN, wireframeName, sections: parsedSections } = parsed;
+      const { descriptionGroups, policyNote: newPN, uiNote: newUN, considerationNote: newCN, wireframeName, sections: parsedSections } = parsed;
 
-      setFigmaProgress(50);
-      const newDescs = Array.isArray(descriptions) && descriptions.length ? descriptions : [""];
-      const newBadges: BadgeMark[] = parsedSections?.[0]?.badges ?? [];
-      setDescItems(newDescs);
+      // Phase 2: 40→80% (텍스트/표 매핑)
+      setFigmaProgress(40);
+      const newGroups: DescGroup[] = Array.isArray(descriptionGroups) && descriptionGroups.length
+        ? descriptionGroups
+        : [{ id: crypto.randomUUID(), pinNumber: "1", title: "", subItems: [] }];
+      setDescGroups(newGroups);
       if (newPN) { setPolicyNote(newPN); setShowPolicy(true); }
       if (newUN) { setUiNote(newUN); setShowUi(true); }
       if (newCN) { setConsiderNote(newCN); setShowConsider(true); }
@@ -573,52 +592,68 @@ function PolicyCard({ policy, tabName, onSaved, onDelete, currentUserName, canEd
       setFigmaUrl("");
       setFigmaProgress(60);
 
-      // 서버에서 Supabase 업로드 완료된 URL 사용 (우선), 실패 시 base64 fallback
-      if (newImgUrl) {
-        const existingWfId = wireframes[0]?.id ?? crypto.randomUUID();
-        const nextWfs: WireframeItem[] = wireframes.length > 0
-          ? wireframes.map((w, i) => i === 0 ? { ...w, url: `${newImgUrl}?v=${Date.now()}`, badges: newBadges.length ? newBadges : w.badges } : w)
-          : [{ id: existingWfId, url: `${newImgUrl}?v=${Date.now()}`, name: wireframeName || "화면", badges: newBadges, isModal: false, modalFor: null, order: 0 }];
-        setWireframes(nextWfs);
-        await persist({
-          description_items: newDescs,
-          wireframes: nextWfs,
-          wireframe_url: nextWfs[0]?.url ?? null,
-          ...(wireframeName && !title ? { title: wireframeName } : {}),
-          ...(newPN ? { policy_note: newPN } : {}),
-          ...(newUN ? { ui_note: newUN } : {}),
-          ...(newCN ? { consideration_note: newCN } : {}),
-        });
-      } else if (imageBase64) {
-        // fallback: base64를 클라이언트에서 업로드
-        if (newBadges.length) {
-          const firstWfId = wireframes[0]?.id ?? crypto.randomUUID();
-          setWireframes(prev => prev.length
-            ? prev.map((w, i) => i === 0 ? { ...w, badges: newBadges } : w)
-            : [{ id: firstWfId, url: null, name: wireframeName || "화면", badges: newBadges, isModal: false, modalFor: null, order: 0 }]
-          );
-        }
-        await persist({
-          description_items: newDescs,
-          ...(wireframeName && !title ? { title: wireframeName } : {}),
-          ...(newPN ? { policy_note: newPN } : {}),
-          ...(newUN ? { ui_note: newUN } : {}),
-          ...(newCN ? { consideration_note: newCN } : {}),
-        });
-        const bytes = Uint8Array.from(atob(imageBase64), c => c.charCodeAt(0));
-        const blob = new Blob([bytes], { type: imageMimeType ?? "image/png" });
-        const file = new File([blob], `figma.${imageMimeType?.split("/")[1] ?? "png"}`, { type: imageMimeType ?? "image/png" });
-        const wfId = wireframes[0]?.id ?? crypto.randomUUID();
-        await handleUpload(wfId, file);
-      } else {
-        await persist({
-          description_items: newDescs,
-          ...(wireframeName && !title ? { title: wireframeName } : {}),
-          ...(newPN ? { policy_note: newPN } : {}),
-          ...(newUN ? { ui_note: newUN } : {}),
-          ...(newCN ? { consideration_note: newCN } : {}),
-        });
-      }
+      // Phase 3: 80→100% (N개 와이어프레임 이미지 전수 로딩)
+      setFigmaProgress(80);
+      type RawSection = { name: string; imageUrl: string; imageBase64: string; imageMimeType: string; badges: WireframeItem["badges"]; isModal: boolean };
+      const sections = (Array.isArray(parsedSections) ? parsedSections : []) as RawSection[];
+      const sb = createClient();
+
+      const nextWfs: WireframeItem[] = await Promise.all(
+        sections.map(async (sec, i) => {
+          const wfId = crypto.randomUUID();
+          let finalUrl: string | null = sec.imageUrl ? `${sec.imageUrl}?v=${Date.now()}` : null;
+
+          // base64 fallback → 클라이언트에서 Supabase 업로드
+          if (!finalUrl && sec.imageBase64) {
+            try {
+              const ext = sec.imageMimeType?.split("/")[1] ?? "png";
+              const bytes = Uint8Array.from(atob(sec.imageBase64), c => c.charCodeAt(0));
+              const blob = new Blob([bytes], { type: sec.imageMimeType ?? "image/png" });
+              const path = `${itemType}/${itemId}/${wfId}-figma.${ext}`;
+              const { error: upErr } = await sb.storage.from("wireframes").upload(path, blob, { contentType: sec.imageMimeType, upsert: true });
+              if (!upErr) {
+                const { data: urlData } = sb.storage.from("wireframes").getPublicUrl(path);
+                finalUrl = `${urlData.publicUrl}?v=${Date.now()}`;
+              }
+            } catch (e) { console.error(`figma section[${i}] upload failed`, e); }
+          }
+
+          return {
+            id: wfId,
+            url: finalUrl,
+            name: sec.name || `화면 ${i + 1}`,
+            badges: sec.badges ?? [],
+            isModal: sec.isModal ?? false,
+            modalFor: null,
+            order: i,
+          };
+        })
+      );
+
+      // 메인 화면들 간 순차 플로우 스텝 자동 생성
+      const mainNewWfs = nextWfs.filter(w => !w.isModal);
+      const autoFlowSteps: FlowStep[] = mainNewWfs.slice(0, -1).map((wf, i) => ({
+        id: crypto.randomUUID(),
+        from: wf.id,
+        to: mainNewWfs[i + 1].id,
+        label: `Step ${i + 1}`,
+      }));
+
+      const finalWfs = nextWfs.length > 0 ? nextWfs : wireframes;
+      setWireframes(finalWfs);
+      if (autoFlowSteps.length > 0) setFlowSteps(autoFlowSteps);
+
+      await persist({
+        description_groups: newGroups,
+        wireframes: finalWfs,
+        flow_steps: autoFlowSteps.length > 0 ? autoFlowSteps : flowSteps,
+        wireframe_url: finalWfs[0]?.url ?? null,
+        ...(wireframeName && !title ? { title: wireframeName } : {}),
+        ...(newPN ? { policy_note: newPN } : {}),
+        ...(newUN ? { ui_note: newUN } : {}),
+        ...(newCN ? { consideration_note: newCN } : {}),
+      });
+
       setFigmaProgress(100);
       setTimeout(() => { setFigmaImporting(false); setFigmaProgress(0); }, 800);
     } catch (e) { clearInterval(animInterval); console.error(e); setError("피그마 가져오기 중 오류가 발생했습니다."); setFigmaImporting(false); }
@@ -650,7 +685,7 @@ function PolicyCard({ policy, tabName, onSaved, onDelete, currentUserName, canEd
         body: JSON.stringify({
           prompt: aiPrompt,
           referenceImage: aiRefImage ?? undefined,
-          context: { title, descriptions: descItems, policyNote, uiNote, considerNote },
+          context: { title, descriptions: descGroups.map(g => g.title), policyNote, uiNote, considerNote },
         }),
       });
       if (!res.ok) { setAiError((await res.json().catch(() => ({}))).error ?? "생성 실패"); setAiGenerating(false); return; }
@@ -660,12 +695,17 @@ function PolicyCard({ policy, tabName, onSaved, onDelete, currentUserName, canEd
       };
       setAiScreens(data.screens ?? []);
       setActiveAiScreen(0);
-      if (data.descriptions?.length) setDescItems(data.descriptions);
+      if (data.descriptions?.length) {
+        const aiGroups: DescGroup[] = data.descriptions.map((text: string, i: number) => ({
+          id: crypto.randomUUID(), pinNumber: String(i + 1), title: text, subItems: [],
+        }));
+        setDescGroups(aiGroups);
+      }
       if (data.policyNote) { setPolicyNote(data.policyNote); setShowPolicy(true); }
       if (data.tables?.length) setTables(data.tables);
       await persist({
         mode: "ai", ai_screens: data.screens ?? [],
-        ...(data.descriptions?.length ? { description_items: data.descriptions } : {}),
+        ...(data.descriptions?.length ? { description_groups: data.descriptions.map((text: string, i: number) => ({ id: crypto.randomUUID(), pinNumber: String(i + 1), title: text, subItems: [] })) } : {}),
         ...(data.policyNote ? { policy_note: data.policyNote } : {}),
         ...(data.tables?.length ? { tables: data.tables } : {}),
       });
@@ -768,7 +808,7 @@ function PolicyCard({ policy, tabName, onSaved, onDelete, currentUserName, canEd
         {mode === "figma" && canEdit && (
           <div className="border-b border-zinc-100 p-4">
             {figmaImporting ? (
-              <ProgressBar progress={figmaProgress} label={figmaProgress < 50 ? "피그마 구조 파싱 중..." : figmaProgress < 100 ? "이미지 업로드 중..." : "완료!"} />
+              <ProgressBar progress={figmaProgress} label={figmaProgress < 40 ? "피그마 레이어 분석 중..." : figmaProgress < 80 ? "텍스트/표 데이터 매핑 중..." : figmaProgress < 100 ? "와이어프레임 이미지 로딩 중..." : "완료!"} />
             ) : showFigmaInput ? (
               <div className="flex gap-2">
                 <FigmaLogo />
@@ -863,7 +903,10 @@ function PolicyCard({ policy, tabName, onSaved, onDelete, currentUserName, canEd
                     wireframes={wireframes} flowSteps={flowSteps}
                     onWireframesChange={handleWfsChange} onFlowStepsChange={handleFlowChange}
                     onUpload={handleUpload}
-                    hoveredBadgeNumber={hoveredBadgeNum} onBadgeHover={setHoveredBadgeNum}
+                    activePinNumber={activePinNumber}
+                    hoveredPinNumber={hoveredPinNumber}
+                    onBadgeHover={setHoveredPinNumber}
+                    onBadgeClick={handleBadgeClick}
                     canEdit={canEdit}
                   />
                 )}
@@ -884,15 +927,15 @@ function PolicyCard({ policy, tabName, onSaved, onDelete, currentUserName, canEd
             style={{ width: rightWidth }}
           >
             <DescriptionPanel
-              descItems={descItems} policyNote={policyNote} uiNote={uiNote} considerNote={considerNote}
+              descGroups={descGroups} policyNote={policyNote} uiNote={uiNote} considerNote={considerNote}
               tables={tables} showPolicy={showPolicy} showUi={showUi} showConsider={showConsider}
-              hoveredBadgeNum={hoveredBadgeNum}
-              onDescChange={setDescItems}
+              activePinNumber={activePinNumber} hoveredPinNumber={hoveredPinNumber}
+              onDescGroupsChange={groups => { setDescGroups(groups); persist({ description_groups: groups }); }}
               onPolicyChange={setPolicyNote} onUiChange={setUiNote} onConsiderChange={setConsiderNote}
               onTablesChange={setTables}
               onShowPolicy={setShowPolicy} onShowUi={setShowUi} onShowConsider={setShowConsider}
-              onBadgeHover={setHoveredBadgeNum}
-              onBlur={() => persist({ description_items: descItems, policy_note: policyNote, ui_note: uiNote, consideration_note: considerNote, tables })}
+              onBadgeHover={setHoveredPinNumber} onBadgeClick={handleBadgeClick}
+              onBlur={() => persist({ description_groups: descGroups, policy_note: policyNote, ui_note: uiNote, consideration_note: considerNote, tables })}
               onTablesBlur={handleTablesBlur}
               canEdit={canEdit}
             />
@@ -911,59 +954,171 @@ function PolicyCard({ policy, tabName, onSaved, onDelete, currentUserName, canEd
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// DescriptionPanel
+// DescriptionPanel — 계층형 (부모 그룹 + 들여쓰기 하위 항목)
 // ──────────────────────────────────────────────────────────────────────────────
 
+const BADGE_COLORS = ["#ef4444", "#3b82f6", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899"];
+const bc = (pin: string) => {
+  const n = parseInt(pin.split("-")[0], 10) || 1;
+  return BADGE_COLORS[(n - 1) % BADGE_COLORS.length];
+};
+
 function DescriptionPanel({
-  descItems, policyNote, uiNote, considerNote, tables,
-  showPolicy, showUi, showConsider, hoveredBadgeNum,
-  onDescChange, onPolicyChange, onUiChange, onConsiderChange, onTablesChange,
-  onShowPolicy, onShowUi, onShowConsider, onBadgeHover,
+  descGroups, policyNote, uiNote, considerNote, tables,
+  showPolicy, showUi, showConsider,
+  activePinNumber, hoveredPinNumber,
+  onDescGroupsChange, onPolicyChange, onUiChange, onConsiderChange, onTablesChange,
+  onShowPolicy, onShowUi, onShowConsider,
+  onBadgeHover, onBadgeClick,
   onBlur, onTablesBlur, canEdit,
 }: {
-  descItems: string[]; policyNote: string; uiNote: string; considerNote: string;
+  descGroups: DescGroup[]; policyNote: string; uiNote: string; considerNote: string;
   tables: TableData[]; showPolicy: boolean; showUi: boolean; showConsider: boolean;
-  hoveredBadgeNum: number | null;
-  onDescChange: (v: string[]) => void; onPolicyChange: (v: string) => void;
-  onUiChange: (v: string) => void; onConsiderChange: (v: string) => void;
+  activePinNumber: string | null; hoveredPinNumber: string | null;
+  onDescGroupsChange: (v: DescGroup[]) => void;
+  onPolicyChange: (v: string) => void; onUiChange: (v: string) => void; onConsiderChange: (v: string) => void;
   onTablesChange: (v: TableData[]) => void;
   onShowPolicy: (v: boolean) => void; onShowUi: (v: boolean) => void; onShowConsider: (v: boolean) => void;
-  onBadgeHover: (n: number | null) => void;
+  onBadgeHover: (pin: string | null) => void; onBadgeClick: (pin: string) => void;
   onBlur: () => void; onTablesBlur: () => void;
   canEdit: boolean;
 }) {
-  const BADGE_COLORS = ["#ef4444", "#3b82f6", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899"];
-  const bColor = (n: number) => BADGE_COLORS[(n - 1) % BADGE_COLORS.length];
+  // 그룹 CRUD 헬퍼
+  function updateGroup(gid: string, patch: Partial<DescGroup>) {
+    onDescGroupsChange(descGroups.map(g => g.id === gid ? { ...g, ...patch } : g));
+  }
+  function deleteGroup(gid: string) { onDescGroupsChange(descGroups.filter(g => g.id !== gid)); }
+  function addGroup() {
+    const maxPin = descGroups.reduce((m, g) => Math.max(m, parseInt(g.pinNumber, 10) || 0), 0);
+    onDescGroupsChange([...descGroups, { id: crypto.randomUUID(), pinNumber: String(maxPin + 1), title: "", subItems: [] }]);
+  }
+  function addSubItem(gid: string) {
+    onDescGroupsChange(descGroups.map(g => {
+      if (g.id !== gid) return g;
+      const nextSub = g.subItems.length + 1;
+      return { ...g, subItems: [...g.subItems, { pinNumber: `${g.pinNumber}-${nextSub}`, text: "" }] };
+    }));
+  }
+  function updateSubItem(gid: string, pin: string, text: string) {
+    onDescGroupsChange(descGroups.map(g =>
+      g.id !== gid ? g : { ...g, subItems: g.subItems.map(s => s.pinNumber === pin ? { ...s, text } : s) }
+    ));
+  }
+  function deleteSubItem(gid: string, pin: string) {
+    onDescGroupsChange(descGroups.map(g =>
+      g.id !== gid ? g : { ...g, subItems: g.subItems.filter(s => s.pinNumber !== pin) }
+    ));
+  }
 
   return (
     <div className="flex flex-col gap-3 p-4">
-      {/* 디스크립션 */}
+      {/* 디스크립션 — 계층형 */}
       <div className="flex flex-col gap-2 rounded-2xl bg-white p-4">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-zinc-400">디스크립션</span>
           {canEdit && (
-            <button type="button" onClick={() => onDescChange([...descItems, ""])}
-              className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-400 hover:bg-zinc-200 hover:text-ink">+ 행 추가</button>
+            <button type="button" onClick={addGroup}
+              className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-400 hover:bg-zinc-200 hover:text-ink">+ 그룹 추가</button>
           )}
         </div>
-        <div className="flex flex-col gap-2">
-          {descItems.map((item, idx) => {
-            const num = idx + 1;
-            const isHighlighted = hoveredBadgeNum === num;
-            const color = bColor(num);
+
+        <div className="flex flex-col gap-3">
+          {descGroups.map(group => {
+            const color = bc(group.pinNumber);
+            const isGroupActive = activePinNumber === group.pinNumber;
+            const isGroupHovered = hoveredPinNumber === group.pinNumber;
             return (
-              <div key={idx}
-                onMouseEnter={() => onBadgeHover(num)} onMouseLeave={() => onBadgeHover(null)}
-                style={isHighlighted ? { boxShadow: `0 0 0 2px ${color}55`, backgroundColor: color + "0d" } : undefined}
-                className="flex gap-2 rounded-xl p-1 transition-all">
-                <span style={{ backgroundColor: color }} className="mt-1.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white">{num}</span>
-                <AutoResizeTextarea value={item} readOnly={!canEdit}
-                  onChange={e => onDescChange(descItems.map((v, i) => i === idx ? e.target.value : v))}
-                  onBlur={onBlur} placeholder="디스크립션을 입력하세요."
-                  className="flex-1 rounded-xl bg-zinc-50 px-3 py-2 text-sm leading-relaxed text-ink outline-none focus:ring-2 focus:ring-brand/20" />
+              <div key={group.id} className="flex flex-col gap-1.5">
+                {/* 부모 그룹 헤더 */}
+                <div
+                  data-pin-group={group.pinNumber}
+                  onMouseEnter={() => onBadgeHover(group.pinNumber)}
+                  onMouseLeave={() => onBadgeHover(null)}
+                  onClick={() => onBadgeClick(group.pinNumber)}
+                  style={
+                    isGroupActive
+                      ? { boxShadow: `0 0 0 2px ${color}80`, backgroundColor: color + "12" }
+                      : isGroupHovered
+                      ? { boxShadow: `0 0 0 2px ${color}40`, backgroundColor: color + "08" }
+                      : undefined
+                  }
+                  className="flex cursor-pointer items-start gap-2 rounded-xl p-1.5 transition-all"
+                >
+                  <span
+                    style={{
+                      backgroundColor: color,
+                      transform: isGroupActive ? "scale(1.2)" : isGroupHovered ? "scale(1.1)" : "scale(1)",
+                    }}
+                    className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white transition-transform duration-150">
+                    {group.pinNumber}
+                  </span>
+                  <AutoResizeTextarea
+                    value={group.title} readOnly={!canEdit}
+                    onChange={e => updateGroup(group.id, { title: e.target.value })}
+                    onBlur={onBlur}
+                    placeholder="정책 제목을 입력하세요."
+                    className="flex-1 rounded-lg bg-zinc-50 px-3 py-1.5 text-sm font-medium leading-relaxed text-ink outline-none focus:ring-2 focus:ring-brand/20"
+                  />
+                  {canEdit && (
+                    <button type="button" onClick={e => { e.stopPropagation(); deleteGroup(group.id); onBlur(); }}
+                      className="self-start rounded-full px-2 py-1 text-xs font-bold text-zinc-300 hover:bg-red-50 hover:text-red-400">✕</button>
+                  )}
+                </div>
+
+                {/* 하위 항목 (들여쓰기) */}
+                {group.subItems.length > 0 && (
+                  <div className="ml-8 flex flex-col gap-1 border-l-2 pl-3" style={{ borderColor: color + "40" }}>
+                    {group.subItems.map(sub => {
+                      const isSubActive = activePinNumber === sub.pinNumber;
+                      const isSubHovered = hoveredPinNumber === sub.pinNumber;
+                      return (
+                        <div
+                          key={sub.pinNumber}
+                          data-pin-sub={sub.pinNumber}
+                          onMouseEnter={() => onBadgeHover(sub.pinNumber)}
+                          onMouseLeave={() => onBadgeHover(null)}
+                          onClick={() => onBadgeClick(sub.pinNumber)}
+                          style={
+                            isSubActive
+                              ? { boxShadow: `0 0 0 2px ${color}70`, backgroundColor: color + "15" }
+                              : isSubHovered
+                              ? { boxShadow: `0 0 0 2px ${color}30`, backgroundColor: color + "08" }
+                              : undefined
+                          }
+                          className="flex cursor-pointer items-start gap-2 rounded-lg p-1 transition-all"
+                        >
+                          <span
+                            style={{
+                              backgroundColor: color,
+                              fontSize: 9,
+                              transform: isSubActive ? "scale(1.15)" : isSubHovered ? "scale(1.07)" : "scale(1)",
+                            }}
+                            className="mt-0.5 flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded px-1 font-bold text-white transition-transform duration-150">
+                            {sub.pinNumber}
+                          </span>
+                          <AutoResizeTextarea
+                            value={sub.text} readOnly={!canEdit}
+                            onChange={e => updateSubItem(group.id, sub.pinNumber, e.target.value)}
+                            onBlur={onBlur}
+                            placeholder="하위 정책을 입력하세요."
+                            className="flex-1 rounded-lg bg-zinc-50 px-2 py-1 text-xs leading-relaxed text-ink outline-none focus:ring-2 focus:ring-brand/20"
+                          />
+                          {canEdit && (
+                            <button type="button" onClick={e => { e.stopPropagation(); deleteSubItem(group.id, sub.pinNumber); onBlur(); }}
+                              className="self-start rounded-full px-1.5 py-0.5 text-[10px] font-bold text-zinc-300 hover:bg-red-50 hover:text-red-400">✕</button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* 하위 항목 추가 버튼 */}
                 {canEdit && (
-                  <button type="button" onClick={() => { onDescChange(descItems.filter((_, i) => i !== idx)); onBlur(); }}
-                    className="self-start rounded-full px-2 py-1 text-xs font-bold text-zinc-400 hover:bg-red-50 hover:text-red-500">✕</button>
+                  <button type="button" onClick={() => addSubItem(group.id)}
+                    className="ml-8 self-start rounded-full bg-zinc-50 px-2.5 py-0.5 text-[11px] font-bold text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600">
+                    + {group.pinNumber}-{group.subItems.length + 1}
+                  </button>
                 )}
               </div>
             );
@@ -983,7 +1138,7 @@ function DescriptionPanel({
         </div>
       )}
 
-      {/* 정책 (Rich Text) */}
+      {/* 정책 */}
       {showPolicy && (
         <div className="rounded-2xl bg-red-50 p-4">
           <div className="mb-2 flex items-center justify-between">
@@ -995,7 +1150,7 @@ function DescriptionPanel({
         </div>
       )}
 
-      {/* UI 참고사항 (Rich Text) */}
+      {/* UI 참고사항 */}
       {showUi && (
         <div className="rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50 p-4">
           <div className="mb-2 flex items-center justify-between">
@@ -1007,7 +1162,7 @@ function DescriptionPanel({
         </div>
       )}
 
-      {/* 고려사항 (Rich Text) */}
+      {/* 고려사항 */}
       {showConsider && (
         <div className="rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50 p-4">
           <div className="mb-2 flex items-center justify-between">
