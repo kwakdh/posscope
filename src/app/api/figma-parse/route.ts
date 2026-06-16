@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createAdminClient } from "@/lib/supabase/server";
 
 const FIGMA_TOKEN = process.env.FIGMA_ACCESS_TOKEN;
 
@@ -288,10 +289,11 @@ export async function POST(req: NextRequest) {
   const flowHints = detectFlowHints(root);
 
   // 이미지 일괄 export
-  type WireframeSection = { name: string; imageBase64: string; imageMimeType: string; badges: BadgeMark[]; isModal: boolean };
+  type WireframeSection = { name: string; imageUrl: string; imageBase64: string; imageMimeType: string; badges: BadgeMark[]; isModal: boolean };
   const allWfs = mainWireframes.length > 0 ? [...mainWireframes, ...modalWireframes] : found.wireframes;
   const sections: WireframeSection[] = allWfs.map(wf => ({
     name: wf.name,
+    imageUrl: "",
     imageBase64: "",
     imageMimeType: "image/png",
     badges: extractBadges(wf),
@@ -300,38 +302,64 @@ export async function POST(req: NextRequest) {
 
   let exportError: string | null = null;
 
+  console.log("[figma-parse] allWfs:", allWfs.length, allWfs.map(w => `${w.id} "${w.name}"`));
+
   if (allWfs.length > 0) {
     try {
-      const exportIds = allWfs.map(w => w.id).join(",");
-      const exportRes = await fetch(
-        `https://api.figma.com/v1/images/${fileKey}?ids=${exportIds}&format=png&scale=2`,
-        { headers: { "X-Figma-Token": FIGMA_TOKEN } }
-      );
+      // 각 ID를 개별 URL-인코딩해서 콤마로 조인 (`:` 포함 안전 처리)
+      const exportIds = allWfs.map(w => encodeURIComponent(w.id)).join(",");
+      const exportUrl = `https://api.figma.com/v1/images/${fileKey}?ids=${exportIds}&format=png&scale=2`;
+      console.log("[figma-parse] export URL:", exportUrl);
+
+      const exportRes = await fetch(exportUrl, { headers: { "X-Figma-Token": FIGMA_TOKEN } });
+      console.log("[figma-parse] export status:", exportRes.status);
+
       if (exportRes.ok) {
         const exportData = await exportRes.json();
-        const imageUrls = exportData.images as Record<string, string>;
+        const imageUrls = exportData.images as Record<string, string | null>;
+        console.log("[figma-parse] imageUrls keys:", Object.keys(imageUrls));
+
+        const sb = createAdminClient();
+
         await Promise.all(allWfs.map(async (wf, i) => {
-          const imgUrl = imageUrls[wf.id] ?? imageUrls[wf.id.replace(":", "-")];
+          const dashId = wf.id.replace(/:/g, "-");
+          const imgUrl = imageUrls[wf.id] ?? imageUrls[dashId] ?? null;
+          console.log(`[figma-parse] wf[${i}] id=${wf.id} dashId=${dashId} url=${imgUrl ? "OK" : "null"}`);
           if (!imgUrl) return;
           try {
-            const imgRes = await fetch(imgUrl);
+            const imgRes = await fetch(imgUrl, { signal: AbortSignal.timeout(25000) });
+            console.log(`[figma-parse] img download status[${i}]:`, imgRes.status, imgRes.headers.get("content-type"));
             if (!imgRes.ok) return;
             const buf = await imgRes.arrayBuffer();
-            sections[i] = {
-              ...sections[i],
-              imageBase64: Buffer.from(buf).toString("base64"),
-              imageMimeType: imgRes.headers.get("content-type") ?? "image/png",
-            };
-          } catch (e) { console.error("Image download failed:", wf.name, e); }
+            const mimeType = imgRes.headers.get("content-type") ?? "image/png";
+            const ext = mimeType.split("/")[1]?.split(";")[0] ?? "png";
+            console.log(`[figma-parse] img size[${i}]:`, buf.byteLength, "bytes");
+
+            // 서버사이드 Supabase 업로드 (service role → RLS 우회)
+            const storagePath = `figma/${fileKey}/${dashId}-${Date.now()}.${ext}`;
+            const { error: upErr } = await sb.storage
+              .from("wireframes")
+              .upload(storagePath, Buffer.from(buf), { contentType: mimeType, upsert: true });
+
+            if (upErr) {
+              console.error(`[figma-parse] Supabase upload failed[${i}]:`, upErr.message);
+              // fallback: base64 반환
+              sections[i] = { ...sections[i], imageBase64: Buffer.from(buf).toString("base64"), imageMimeType: mimeType };
+            } else {
+              const { data: urlData } = sb.storage.from("wireframes").getPublicUrl(storagePath);
+              console.log(`[figma-parse] Supabase upload OK[${i}]:`, urlData.publicUrl);
+              sections[i] = { ...sections[i], imageUrl: urlData.publicUrl, imageMimeType: mimeType };
+            }
+          } catch (e) { console.error(`[figma-parse] Image download failed[${i}]:`, wf.name, e); }
         }));
       } else {
         const errBody = await exportRes.json().catch(() => ({}));
         exportError = `Figma export ${exportRes.status}: ${JSON.stringify(errBody)}`;
-        console.error(exportError);
+        console.error("[figma-parse]", exportError);
       }
     } catch (e) {
       exportError = String(e);
-      console.error("Batch image export failed:", e);
+      console.error("[figma-parse] Batch image export failed:", e);
     }
   }
 
@@ -339,6 +367,7 @@ export async function POST(req: NextRequest) {
     // 하위 호환 (단건 모드)
     wireframeName: sections[0]?.name ?? "",
     wireframeCount: sections.length,
+    imageUrl: sections[0]?.imageUrl ?? "",
     imageBase64: sections[0]?.imageBase64 ?? "",
     imageMimeType: sections[0]?.imageMimeType ?? "image/png",
     // 공통 텍스트

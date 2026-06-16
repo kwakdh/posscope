@@ -265,7 +265,7 @@ export function FeatureDetail({
       }
       const parsed = await res.json();
       const { sections, descriptions, policyNote, uiNote, considerationNote } = parsed as {
-        sections: { name: string; imageBase64: string; imageMimeType: string; badges: BadgeMark[]; isModal: boolean }[];
+        sections: { name: string; imageUrl: string; imageBase64: string; imageMimeType: string; badges: BadgeMark[]; isModal: boolean }[];
         descriptions: string[]; policyNote: string; uiNote: string; considerationNote: string;
       };
       if (!sections?.length) { setBulkError("가져올 와이어프레임이 없습니다."); setBulkImporting(false); return; }
@@ -293,18 +293,30 @@ export function FeatureDetail({
         if (err || !row) { setBulkProgress(50 + Math.round(((i + 1) / sections.length) * 50)); continue; }
         let saved = normalizePolicy(row);
 
-        if (sec.imageBase64) {
+        // 서버사이드 업로드 URL 우선, fallback으로 base64 클라이언트 업로드
+        const srcUrl = sec.imageUrl || null;
+        const srcBase64 = sec.imageBase64 || null;
+        if (srcUrl || srcBase64) {
           try {
-            const bytes = Uint8Array.from(atob(sec.imageBase64), c => c.charCodeAt(0));
-            const blob = new Blob([bytes], { type: sec.imageMimeType });
-            const ext = sec.imageMimeType.split("/")[1] ?? "png";
-            const wfId = crypto.randomUUID();
-            const path = `${itemType}/${itemId}/${saved.id}-${wfId}.${ext}`;
-            const { error: upErr } = await sb.storage.from("wireframes").upload(path, new File([blob], `figma.${ext}`, { type: sec.imageMimeType }), { upsert: true });
-            if (!upErr) {
-              const { data: urlData } = sb.storage.from("wireframes").getPublicUrl(path);
+            let finalUrl: string | null = null;
+            if (srcUrl) {
+              finalUrl = `${srcUrl}?v=${Date.now()}`;
+            } else if (srcBase64) {
+              const bytes = Uint8Array.from(atob(srcBase64), c => c.charCodeAt(0));
+              const blob = new Blob([bytes], { type: sec.imageMimeType });
+              const ext = sec.imageMimeType.split("/")[1] ?? "png";
+              const wfId2 = crypto.randomUUID();
+              const path = `${itemType}/${itemId}/${saved.id}-${wfId2}.${ext}`;
+              const { error: upErr } = await sb.storage.from("wireframes").upload(path, new File([blob], `figma.${ext}`, { type: sec.imageMimeType }), { upsert: true });
+              if (!upErr) {
+                const { data: urlData } = sb.storage.from("wireframes").getPublicUrl(path);
+                finalUrl = `${urlData.publicUrl}?v=${Date.now()}`;
+              }
+            }
+            if (finalUrl) {
+              const wfId = crypto.randomUUID();
               const wfItem: WireframeItem = {
-                id: wfId, url: `${urlData.publicUrl}?v=${Date.now()}`, name: sec.name,
+                id: wfId, url: finalUrl, name: sec.name,
                 badges: sec.badges ?? [], isModal: sec.isModal ?? false, modalFor: null, order: i,
               };
               const { data: updated } = await sb.from("policies")
@@ -312,7 +324,7 @@ export function FeatureDetail({
                 .eq("id", saved.id).select("*").single();
               if (updated) saved = normalizePolicy(updated);
             }
-          } catch { /* skip, badge 포함한 텍스트는 이미 저장됨 */ }
+          } catch { /* skip */ }
         }
         created.push(saved);
         setBulkProgress(50 + Math.round(((i + 1) / sections.length) * 50));
@@ -548,7 +560,7 @@ function PolicyCard({ policy, tabName, onSaved, onDelete, currentUserName, canEd
       if (!res.ok) { setError((await res.json().catch(() => ({}))).error ?? "피그마를 가져오지 못했습니다."); setFigmaImporting(false); return; }
 
       const parsed = await res.json();
-      const { imageBase64, imageMimeType, descriptions, policyNote: newPN, uiNote: newUN, considerationNote: newCN, wireframeName, sections: parsedSections } = parsed;
+      const { imageUrl: newImgUrl, imageBase64, imageMimeType, descriptions, policyNote: newPN, uiNote: newUN, considerationNote: newCN, wireframeName, sections: parsedSections } = parsed;
 
       setFigmaProgress(50);
       const newDescs = Array.isArray(descriptions) && descriptions.length ? descriptions : [""];
@@ -558,36 +570,57 @@ function PolicyCard({ policy, tabName, onSaved, onDelete, currentUserName, canEd
       if (newUN) { setUiNote(newUN); setShowUi(true); }
       if (newCN) { setConsiderNote(newCN); setShowConsider(true); }
       if (wireframeName && !title) setTitle(wireframeName);
-      if (newBadges.length) {
-        const firstWfId = wireframes[0]?.id ?? crypto.randomUUID();
-        setWireframes(prev => prev.length
-          ? prev.map((w, i) => i === 0 ? { ...w, badges: newBadges } : w)
-          : [{ id: firstWfId, url: null, name: wireframeName || "화면", badges: newBadges, isModal: false, modalFor: null, order: 0 }]
-        );
-      }
-      const saved = await persist({
-        description_items: newDescs,
-        ...(wireframeName && !title ? { title: wireframeName } : {}),
-        ...(newPN ? { policy_note: newPN } : {}),
-        ...(newUN ? { ui_note: newUN } : {}),
-        ...(newCN ? { consideration_note: newCN } : {}),
-      });
       setFigmaUrl("");
       setFigmaProgress(60);
 
-      if (imageBase64) {
+      // 서버에서 Supabase 업로드 완료된 URL 사용 (우선), 실패 시 base64 fallback
+      if (newImgUrl) {
+        const existingWfId = wireframes[0]?.id ?? crypto.randomUUID();
+        const nextWfs: WireframeItem[] = wireframes.length > 0
+          ? wireframes.map((w, i) => i === 0 ? { ...w, url: `${newImgUrl}?v=${Date.now()}`, badges: newBadges.length ? newBadges : w.badges } : w)
+          : [{ id: existingWfId, url: `${newImgUrl}?v=${Date.now()}`, name: wireframeName || "화면", badges: newBadges, isModal: false, modalFor: null, order: 0 }];
+        setWireframes(nextWfs);
+        await persist({
+          description_items: newDescs,
+          wireframes: nextWfs,
+          wireframe_url: nextWfs[0]?.url ?? null,
+          ...(wireframeName && !title ? { title: wireframeName } : {}),
+          ...(newPN ? { policy_note: newPN } : {}),
+          ...(newUN ? { ui_note: newUN } : {}),
+          ...(newCN ? { consideration_note: newCN } : {}),
+        });
+      } else if (imageBase64) {
+        // fallback: base64를 클라이언트에서 업로드
+        if (newBadges.length) {
+          const firstWfId = wireframes[0]?.id ?? crypto.randomUUID();
+          setWireframes(prev => prev.length
+            ? prev.map((w, i) => i === 0 ? { ...w, badges: newBadges } : w)
+            : [{ id: firstWfId, url: null, name: wireframeName || "화면", badges: newBadges, isModal: false, modalFor: null, order: 0 }]
+          );
+        }
+        await persist({
+          description_items: newDescs,
+          ...(wireframeName && !title ? { title: wireframeName } : {}),
+          ...(newPN ? { policy_note: newPN } : {}),
+          ...(newUN ? { ui_note: newUN } : {}),
+          ...(newCN ? { consideration_note: newCN } : {}),
+        });
         const bytes = Uint8Array.from(atob(imageBase64), c => c.charCodeAt(0));
         const blob = new Blob([bytes], { type: imageMimeType ?? "image/png" });
         const file = new File([blob], `figma.${imageMimeType?.split("/")[1] ?? "png"}`, { type: imageMimeType ?? "image/png" });
         const wfId = wireframes[0]?.id ?? crypto.randomUUID();
         await handleUpload(wfId, file);
-        setFigmaProgress(100);
-        setTimeout(() => { setFigmaImporting(false); setFigmaProgress(0); }, 800);
       } else {
-        setFigmaProgress(100);
-        setTimeout(() => { setFigmaImporting(false); setFigmaProgress(0); }, 800);
+        await persist({
+          description_items: newDescs,
+          ...(wireframeName && !title ? { title: wireframeName } : {}),
+          ...(newPN ? { policy_note: newPN } : {}),
+          ...(newUN ? { ui_note: newUN } : {}),
+          ...(newCN ? { consideration_note: newCN } : {}),
+        });
       }
-      void saved;
+      setFigmaProgress(100);
+      setTimeout(() => { setFigmaImporting(false); setFigmaProgress(0); }, 800);
     } catch (e) { clearInterval(animInterval); console.error(e); setError("피그마 가져오기 중 오류가 발생했습니다."); setFigmaImporting(false); }
   }
 

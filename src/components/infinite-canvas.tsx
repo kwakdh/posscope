@@ -11,12 +11,14 @@ type Transform = { x: number; y: number; scale: number };
 export function InfiniteCanvas({
   children,
   className,
+  initialScale = 1,
 }: {
   children: ReactNode;
   className?: string;
+  initialScale?: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [t, setT] = useState<Transform>({ x: 40, y: 32, scale: 1 });
+  const [t, setT] = useState<Transform>({ x: 40, y: 32, scale: initialScale });
   const [isPanning, setIsPanning] = useState(false);
   const [spaceDown, setSpaceDown] = useState(false);
   const panStart = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
