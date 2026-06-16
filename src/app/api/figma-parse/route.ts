@@ -64,6 +64,55 @@ function extractDescriptions(frame: FigmaNode): string[] {
   return rows;
 }
 
+type BadgeMark = { id: string; number: number; x: number; y: number };
+
+function extractBadges(wireframeNode: FigmaNode): BadgeMark[] {
+  const box = wireframeNode.absoluteBoundingBox;
+  if (!box || box.width === 0 || box.height === 0) return [];
+
+  const results: BadgeMark[] = [];
+
+  function parseNum(name: string): number | null {
+    const m = name.trim().match(/^(?:No\.?\s*|#|Badge\s*|callout[-\s]*|항목\s*)?(\d+)$/i);
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  function scan(node: FigmaNode) {
+    const nb = node.absoluteBoundingBox;
+    if (!nb) { (node.children ?? []).forEach(scan); return; }
+
+    const isSmall = nb.width <= 80 && nb.height <= 80;
+    if (!isSmall || node.type === "TEXT") { (node.children ?? []).forEach(scan); return; }
+
+    let num = parseNum(node.name);
+
+    if (num === null) {
+      const numTexts = allTextNodes(node)
+        .map(n => (n.characters ?? "").trim())
+        .filter(t => /^\d+$/.test(t));
+      if (numTexts.length === 1) num = parseInt(numTexts[0], 10);
+    }
+
+    if (num !== null && num >= 1 && num <= 99) {
+      const cx = ((nb.x + nb.width / 2 - box!.x) / box!.width) * 100;
+      const cy = ((nb.y + nb.height / 2 - box!.y) / box!.height) * 100;
+      if (cx >= 0 && cx <= 100 && cy >= 0 && cy <= 100) {
+        results.push({ id: node.id, number: num, x: cx, y: cy });
+        return;
+      }
+    }
+
+    (node.children ?? []).forEach(scan);
+  }
+
+  (wireframeNode.children ?? []).forEach(scan);
+
+  const seen = new Set<number>();
+  return results
+    .sort((a, b) => a.number - b.number)
+    .filter(b => { if (seen.has(b.number)) return false; seen.add(b.number); return true; });
+}
+
 function isLargeUIFrame(node: FigmaNode): boolean {
   if (!["FRAME", "COMPONENT", "INSTANCE"].includes(node.type)) return false;
   const box = node.absoluteBoundingBox;
@@ -138,18 +187,20 @@ export async function POST(req: NextRequest) {
   const considerationNote = found.consideration ? extractText(found.consideration, /^(확인|고려사항|★\s*고려사항)$/i) : "";
 
   // Batch export all wireframe images in a single Figma API call
-  type WireframeSection = { name: string; imageBase64: string; imageMimeType: string };
+  type WireframeSection = { name: string; imageBase64: string; imageMimeType: string; badges: BadgeMark[] };
   const sections: WireframeSection[] = found.wireframes.map(wf => ({
-    name: wf.name, imageBase64: "", imageMimeType: "image/png"
+    name: wf.name, imageBase64: "", imageMimeType: "image/png", badges: extractBadges(wf),
   }));
+
+  let exportError: string | null = null;
 
   if (found.wireframes.length > 0) {
     try {
-      const exportIds = found.wireframes.map(w => w.id);
-      const exportRes = await fetch(
-        `https://api.figma.com/v1/images/${fileKey}?ids=${exportIds.map(encodeURIComponent).join(",")}&format=png&scale=2`,
-        { headers: { "X-Figma-Token": FIGMA_TOKEN } }
-      );
+      // Figma API expects raw node IDs (e.g. "123:456") separated by commas
+      const exportIds = found.wireframes.map(w => w.id).join(",");
+      const exportUrl = `https://api.figma.com/v1/images/${fileKey}?ids=${exportIds}&format=png&scale=2`;
+      const exportRes = await fetch(exportUrl, { headers: { "X-Figma-Token": FIGMA_TOKEN } });
+
       if (exportRes.ok) {
         const exportData = await exportRes.json();
         const imageUrls = exportData.images as Record<string, string>;
@@ -166,11 +217,19 @@ export async function POST(req: NextRequest) {
               name: wf.name,
               imageBase64: Buffer.from(buf).toString("base64"),
               imageMimeType: imgRes.headers.get("content-type") ?? "image/png",
+              badges: sections[i].badges,
             };
-          } catch { /* skip this image */ }
+          } catch (e) {
+            console.error("Image download failed:", wf.name, e);
+          }
         }));
+      } else {
+        const errBody = await exportRes.json().catch(() => ({}));
+        exportError = `Figma export API ${exportRes.status}: ${JSON.stringify(errBody)}`;
+        console.error("Figma export failed:", exportError);
       }
     } catch (e) {
+      exportError = String(e);
       console.error("Batch image export failed:", e);
     }
   }
@@ -188,5 +247,11 @@ export async function POST(req: NextRequest) {
     considerationNote,
     // All wireframes (for bulk import)
     sections,
+    // Debug info
+    _debug: {
+      wireframesFound: found.wireframes.length,
+      wireframeNames: found.wireframes.map(w => ({ name: w.name, id: w.id, w: w.absoluteBoundingBox?.width, h: w.absoluteBoundingBox?.height })),
+      exportError,
+    },
   });
 }

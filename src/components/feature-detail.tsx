@@ -200,7 +200,7 @@ export function FeatureDetail({ itemType, itemId, currentUserName, canEdit }: Fe
       }
       const parsed = await res.json();
       const { sections, descriptions, policyNote, uiNote, considerationNote } = parsed as {
-        sections: { name: string; imageBase64: string; imageMimeType: string }[];
+        sections: { name: string; imageBase64: string; imageMimeType: string; badges: ImageBadgeMark[] }[];
         descriptions: string[];
         policyNote: string;
         uiNote: string;
@@ -227,7 +227,7 @@ export function FeatureDetail({ itemType, itemId, currentUserName, canEdit }: Fe
           policy_note: i === 0 ? policyNote : "",
           ui_note: i === 0 ? uiNote : "",
           consideration_note: i === 0 ? considerationNote : "",
-          image_badges: [],
+          image_badges: sec.badges ?? [],
         };
         const { data: policyRow, error: pErr } = await supabase.from("policies").insert(policyData).select("*").single();
         if (pErr || !policyRow) continue;
@@ -572,9 +572,11 @@ function PolicyCard({ policy, tabName, onSaved, onDelete, currentUserName, canEd
       const res = await fetch("/api/figma-parse", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: figmaUrl.trim() }) });
       if (!res.ok) { const err = await res.json().catch(() => ({})); setError(err.error ?? "피그마를 가져오지 못했습니다."); setUploading(false); return; }
       const parsed = await res.json();
-      const { imageBase64, imageMimeType, descriptions, policyNote: newPN, uiNote: newUN, considerationNote: newCN, wireframeName } = parsed;
+      const { imageBase64, imageMimeType, descriptions, policyNote: newPN, uiNote: newUN, considerationNote: newCN, wireframeName, sections: parsedSections } = parsed;
       const newDescs = Array.isArray(descriptions) && descriptions.length > 0 ? descriptions : [""];
+      const newBadges: ImageBadgeMark[] = parsedSections?.[0]?.badges ?? [];
       setDescriptionItems(newDescs);
+      if (newBadges.length > 0) setImageBadges(newBadges);
       if (newPN) { setPolicyNote(newPN); setShowPolicy(true); }
       if (newUN) { setUiNote(newUN); setShowUiNote(true); }
       if (newCN) { setConsiderationNote(newCN); setShowConsideration(true); }
@@ -582,6 +584,7 @@ function PolicyCard({ policy, tabName, onSaved, onDelete, currentUserName, canEd
       const savedPolicy = await persist({
         ...(wireframeName && !title ? { title: wireframeName } : {}),
         description_items: newDescs,
+        image_badges: newBadges,
         ...(newPN ? { policy_note: newPN } : {}),
         ...(newUN ? { ui_note: newUN } : {}),
         ...(newCN ? { consideration_note: newCN } : {}),
