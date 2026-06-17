@@ -214,8 +214,7 @@ export function FeatureDetail({
   const draftPolicies = activePolicies.filter(p => !p.is_locked);
   const displayPolicies = draftPolicies.length > 0
     ? draftPolicies
-    // [현행] 탭: 데이터 없으면 빈 화면 (Figma 연결 유도) — emptyPolicy 표시 안 함
-    : activeTabKind !== "current" && activePolicies.length === 0
+    : activePolicies.length === 0
     ? [emptyPolicy(itemType, itemId, activeTabKind)]
     : [];
 
@@ -479,13 +478,10 @@ export function FeatureDetail({
       {bulkError && <p className="px-1 text-xs text-red-500">{bulkError}</p>}
 
       {/* ── [현행] 읽기전용 배너 ── */}
-      {activeTabKind === "current" && displayPolicies.length > 0 && (
+      {activeTabKind === "current" && activePolicies.length > 0 && (
         <div className="flex items-center gap-2 rounded-2xl bg-amber-50 px-4 py-2.5 text-sm text-amber-700">
           🔒 현행 버전은 참조 전용입니다. 수정하려면 <strong>+ 추가</strong> 탭을 생성하세요.
         </div>
-      )}
-      {activeTabKind === "current" && displayPolicies.length === 0 && !bulkImporting && (
-        <p className="px-1 text-sm text-zinc-400">피그마 URL을 연결하고 <strong>전체 불러오기</strong>를 눌러 현행 화면을 가져오세요.</p>
       )}
 
       {/* ── 섹션 목록 ── */}
@@ -1050,17 +1046,15 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
       )}
 
       {/* ── 모드 스위처 ── */}
-      {canEdit && (
-        <div className="flex items-center gap-1 self-start rounded-xl bg-zinc-100 p-1">
-          {([["canvas", "🖼️ 시안 불러오기"], ["ai", "✨ AI 생성"]] as [PolicyMode, string][]).map(([m, label]) => (
-            <button key={m} type="button"
-              onClick={() => { setMode(m); persist({ mode: m }); }}
-              className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${mode === m ? "bg-white text-ink shadow-sm" : "text-zinc-500 hover:text-ink"}`}>
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="flex items-center gap-1 self-start rounded-xl bg-zinc-100 p-1">
+        {([["canvas", "🖼️ 시안 불러오기"], ["ai", "✨ AI 생성"]] as [PolicyMode, string][]).map(([m, label]) => (
+          <button key={m} type="button"
+            onClick={canEdit ? () => { setMode(m); persist({ mode: m }); } : undefined}
+            className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${mode === m ? "bg-white text-ink shadow-sm" : "text-zinc-500 hover:text-ink"} ${!canEdit ? "pointer-events-none" : ""}`}>
+            {label}
+          </button>
+        ))}
+      </div>
 
       {/* ── 카드 본문: 무한 캔버스 + 리사이즈 패널 ── */}
       <div className="overflow-hidden rounded-3xl bg-surface">
