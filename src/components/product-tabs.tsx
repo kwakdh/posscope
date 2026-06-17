@@ -235,7 +235,7 @@ export function ProductTabs({ products, currentUserName, canEdit }: ProductTabsP
                   <FeatureDetail
                     key={selected.id}
                     itemType={selected.itemType === "home" ? "category" : selected.itemType}
-                    itemId={selected.id}
+                    itemId={selected.itemType === "home" ? `home_${activeSlug}` : selected.id}
                     currentUserName={currentUserName}
                     canEdit={canEdit}
                   />
