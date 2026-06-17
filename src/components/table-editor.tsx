@@ -127,7 +127,7 @@ export function TableEditor({ tables, onChange, onBlur, canEdit }: Props) {
 
       {canEdit && (
         <button type="button" onClick={addTable}
-          className="flex items-center justify-center gap-1 rounded-xl border border-dashed border-zinc-200 py-2 text-xs font-bold text-zinc-400 transition-colors hover:border-brand/40 hover:text-brand">
+          className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-gray-500 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100 hover:text-gray-700 transition-colors">
           + 표 추가
         </button>
       )}

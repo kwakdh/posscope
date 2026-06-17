@@ -37,7 +37,8 @@ function extractAllText(node: FigmaNode, skipPattern?: RegExp): string {
 
 // ── 배지 감지 ─────────────────────────────────────────────────────────────────
 
-function extractBadges(wfNode: FigmaNode): BadgeMark[] {
+// parentNode: 피그마에서 배지가 와이어프레임 외부(형제 레이어)에 있는 패턴 대응용
+function extractBadges(wfNode: FigmaNode, parentNode?: FigmaNode): BadgeMark[] {
   const box = wfNode.absoluteBoundingBox;
   if (!box || box.width === 0 || box.height === 0) return [];
   const results: BadgeMark[] = [];
@@ -87,8 +88,9 @@ function extractBadges(wfNode: FigmaNode): BadgeMark[] {
       if (isTinyBadge || isColoredBadge || parsePin(node.name) !== null) {
         const cx = ((nb.x + nb.width / 2 - box!.x) / box!.width) * 100;
         const cy = ((nb.y + nb.height / 2 - box!.y) / box!.height) * 100;
-        if (cx >= 0 && cx <= 100 && cy >= 0 && cy <= 100) {
-          results.push({ id: node.id, pinNumber: pin, x: cx, y: cy });
+        // 약간의 여유(±5%)를 두고 와이어프레임 범위 내 배지만 포함
+        if (cx >= -5 && cx <= 105 && cy >= -5 && cy <= 105) {
+          results.push({ id: node.id, pinNumber: pin, x: Math.max(0, Math.min(100, cx)), y: Math.max(0, Math.min(100, cy)) });
           return;
         }
       }
@@ -97,7 +99,24 @@ function extractBadges(wfNode: FigmaNode): BadgeMark[] {
     (node.children ?? []).forEach(scan);
   }
 
+  // 1차: 와이어프레임 내부 자식 스캔
   (wfNode.children ?? []).forEach(scan);
+
+  // 2차: 내부에서 배지를 못 찾은 경우, 부모의 형제 노드 중 이 와이어프레임과
+  //      겹치는 노드를 스캔 (배지가 별도 annotation 레이어에 있는 패턴 대응)
+  if (results.length === 0 && parentNode) {
+    const pad = 60; // 약간의 여유 margin (픽셀)
+    for (const sibling of (parentNode.children ?? [])) {
+      if (sibling.id === wfNode.id) continue;
+      const sb = sibling.absoluteBoundingBox;
+      if (!sb) continue;
+      const overlapsX = sb.x < box.x + box.width + pad && sb.x + sb.width > box.x - pad;
+      const overlapsY = sb.y < box.y + box.height + pad && sb.y + sb.height > box.y - pad;
+      if (overlapsX && overlapsY) {
+        scan(sibling);
+      }
+    }
+  }
 
   // 핀 번호 기준 정렬 & 중복 제거
   const seen = new Set<string>();
@@ -245,6 +264,9 @@ function classifyNode(node: FigmaNode): NodeClass {
   if (!["FRAME", "COMPONENT", "INSTANCE", "GROUP", "SECTION", "TEXT"].includes(node.type)) return "skip";
   if (!box || box.width < 80 || box.height < 80) return "skip";
 
+  // 빨간 수정범위 마크업 필터 (v.0.x 수정범위 박스 등)
+  if (isVersionMarkupNode(node)) return "skip";
+
   // 이름 기반 분류 (최우선)
   if (/descriptions?\s*\/\s*policies?/i.test(name)) return "description";
   if (/^정책$|^\[정책\]/i.test(name))              return "policy";
@@ -327,6 +349,23 @@ function classifyChildren(root: FigmaNode): Classified {
     }
   }
 
+  // ── 루트가 디바이스 화면 크기인데 찾은 wireframe들이 전부 그 하위 컴포넌트인 경우 →
+  //    루트 자체를 wireframe으로 사용 (키패드·버튼 등 서브 컴포넌트가 wireframe으로 잘못 분류되는 버그 방지)
+  if (result.wireframes.length > 0 && root.type === "FRAME" && root.absoluteBoundingBox) {
+    const rootBox = root.absoluteBoundingBox;
+    if (isDeviceSizedScreen(rootBox)) {
+      const rootArea = rootBox.width * rootBox.height;
+      const allSubComponents = result.wireframes.every(wf => {
+        const wfBox = wf.absoluteBoundingBox;
+        if (!wfBox) return true;
+        return wfBox.width * wfBox.height < rootArea * 0.65;
+      });
+      if (allSubComponents) {
+        result.wireframes = [root];
+      }
+    }
+  }
+
   // 직접 자식에서 와이어프레임을 못 찾으면 루트 자체를 폴백
   if (result.wireframes.length === 0 && root.absoluteBoundingBox) {
     console.log("[figma-parse] fallback: using root as wireframe");
@@ -343,6 +382,46 @@ function classifyChildren(root: FigmaNode): Classified {
   return result;
 }
 
+// ── 부모 섹션 ID 탐색 (단건 URL → 상위 섹션 자동 확장) ─────────────────────
+
+async function findParentSectionId(fileKey: string, targetNodeId: string, token: string): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `https://api.figma.com/v1/files/${fileKey}?depth=6`,
+      { headers: { "X-Figma-Token": token }, signal: AbortSignal.timeout(20000) }
+    );
+    if (!res.ok) return null;
+    const { document: doc } = await res.json() as {
+      document: { id: string; type?: string; children?: unknown[] }
+    };
+
+    type Entry = { node: { id: string; type?: string; children?: unknown[] }; parentId: string | null; parentType: string | null };
+    const queue: Entry[] = [{ node: doc, parentId: null, parentType: null }];
+    while (queue.length > 0) {
+      const { node, parentId, parentType } = queue.shift()!;
+      if (node.id === targetNodeId) {
+        if (!parentType || parentType === "DOCUMENT" || parentType === "PAGE") return null;
+        return parentId;
+      }
+      for (const child of (node.children ?? []) as { id: string; type?: string; children?: unknown[] }[]) {
+        queue.push({ node: child, parentId: node.id, parentType: node.type ?? null });
+      }
+    }
+    return null;
+  } catch { return null; }
+}
+
+// ── 디바이스 화면 크기 판별 ───────────────────────────────────────────────────
+
+function isDeviceSizedScreen(box: FigmaBox): boolean {
+  const isPortrait = box.height > box.width * 1.1;
+  const isLandscape = box.width > box.height * 1.3;
+  return (
+    (isPortrait && box.height >= 600 && box.width >= 300) ||
+    (isLandscape && box.width >= 800 && box.width <= 2400 && box.height >= 500)
+  );
+}
+
 // ── 모달 판별 ─────────────────────────────────────────────────────────────────
 
 function isModalFrame(node: FigmaNode, parentBox?: FigmaBox): boolean {
@@ -353,6 +432,131 @@ function isModalFrame(node: FigmaNode, parentBox?: FigmaBox): boolean {
   if (!isSmall) return false;
   const allTexts = allTextNodes(node).map(n => (n.characters ?? "").trim().toLowerCase());
   return allTexts.filter(t => /^(확인|취소|닫기|close|cancel|ok|완료|적용|다음|이전|저장)$/.test(t)).length >= 1;
+}
+
+// ── 버전 마크업(빨간 수정범위 박스) 감지 ─────────────────────────────────────
+
+function isVersionMarkupNode(node: FigmaNode): boolean {
+  const fills = node.fills ?? [];
+  const hasRedFill = fills.some(f => {
+    if (f.type !== "SOLID" || !f.color) return false;
+    const { r, g, b } = f.color;
+    return r > 0.55 && g < 0.45 && b < 0.45 && r > g * 1.4 && r > b * 1.4;
+  });
+  if (!hasRedFill) return false;
+  const nameHit = /수정\s*범위|v\.\s*\d+\.\d+\s*수정/i.test(node.name);
+  const textHit = allTextNodes(node).some(n => /수정\s*범위|v\.\s*\d+\.\d+/i.test(n.characters ?? ""));
+  return nameHit || textHit;
+}
+
+// ── 초록 포스트잇(Green Sticky Note) 감지 ────────────────────────────────────
+
+function hasGreenStickyFill(node: FigmaNode): boolean {
+  return (node.fills ?? []).some(f => {
+    if (f.type !== "SOLID" || !f.color) return false;
+    const { r, g, b } = f.color;
+    // 연녹색 계열 (#E2F2D1 = 0.886/0.949/0.820 등)
+    // 녹색 채널이 r·b보다 지배적 + 전체적으로 밝음
+    const isGreenDominant = g > r && g > b;
+    const isBright = (r + g + b) / 3 > 0.55;
+    const greenness = g - Math.max(r, b);
+    return isGreenDominant && isBright && greenness > 0.03 && g > 0.55;
+  });
+}
+
+type StickyNote = { id: string; title: string; box: FigmaBox };
+
+function findGreenStickyNotes(root: FigmaNode): StickyNote[] {
+  const notes: StickyNote[] = [];
+  const seen = new Set<string>();
+
+  function scan(node: FigmaNode, depth: number) {
+    if (depth > 3) return;
+    const box = node.absoluteBoundingBox;
+    if (!box) {
+      if (depth < 2) (node.children ?? []).forEach(c => scan(c, depth + 1));
+      return;
+    }
+    // 포스트잇 조건: 디바이스 화면 크기가 아님 + 적당한 크기 + 녹색 fill + 텍스트 있음
+    const isReasonableSize = box.width <= 700 && box.height <= 450;
+    const notTiny = box.width >= 30 && box.height >= 18;
+    if (
+      isReasonableSize && notTiny &&
+      !seen.has(node.id) &&
+      !isDeviceSizedScreen(box) &&
+      ["FRAME", "RECTANGLE", "GROUP", "COMPONENT", "INSTANCE"].includes(node.type) &&
+      hasGreenStickyFill(node)
+    ) {
+      const text = allTextNodes(node)
+        .map(n => (n.characters ?? "").trim()).filter(Boolean).join(" ").trim();
+      if (text.length >= 1 && text.length <= 300) {
+        notes.push({ id: node.id, title: text, box });
+        seen.add(node.id);
+        return; // 내부 재탐색 안 함
+      }
+    }
+    if (depth < 2) (node.children ?? []).forEach(c => scan(c, depth + 1));
+  }
+
+  (root.children ?? []).forEach(c => scan(c, 0));
+  return notes;
+}
+
+// ── 포스트잇 기반 섹션 그룹화 ────────────────────────────────────────────────
+
+type FigmaSectionGroup = {
+  sectionTitle: string;
+  noteBox: FigmaBox;
+  wireframeNodes: FigmaNode[];
+  descNodes: FigmaNode[];
+  policyNodes: FigmaNode[];
+  uiNoteNodes: FigmaNode[];
+  considerNodes: FigmaNode[];
+};
+
+function centerDist(a: FigmaBox, b: FigmaBox): number {
+  const ax = a.x + a.width / 2, ay = a.y + a.height / 2;
+  const bx = b.x + b.width / 2, by = b.y + b.height / 2;
+  return Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2);
+}
+
+function groupByStickyNotes(
+  notes: StickyNote[],
+  wireframes: FigmaNode[],
+  descNodes: FigmaNode[],
+  policyNodes: FigmaNode[],
+  uiNoteNodes: FigmaNode[],
+  considerNodes: FigmaNode[],
+): FigmaSectionGroup[] {
+  const groups = new Map<string, FigmaSectionGroup>(
+    notes.map(n => [n.id, {
+      sectionTitle: n.title, noteBox: n.box,
+      wireframeNodes: [], descNodes: [], policyNodes: [], uiNoteNodes: [], considerNodes: [],
+    }])
+  );
+
+  function assignClosest(items: FigmaNode[], key: keyof FigmaSectionGroup) {
+    for (const item of items) {
+      const box = item.absoluteBoundingBox;
+      if (!box) continue;
+      let minD = Infinity, closestId = notes[0].id;
+      for (const note of notes) {
+        const d = centerDist(box, note.box);
+        if (d < minD) { minD = d; closestId = note.id; }
+      }
+      (groups.get(closestId)![key] as FigmaNode[]).push(item);
+    }
+  }
+
+  assignClosest(wireframes, "wireframeNodes");
+  assignClosest(descNodes, "descNodes");
+  assignClosest(policyNodes, "policyNodes");
+  assignClosest(uiNoteNodes, "uiNoteNodes");
+  assignClosest(considerNodes, "considerNodes");
+
+  return [...groups.values()]
+    .filter(g => g.wireframeNodes.length > 0 || g.descNodes.length > 0)
+    .sort((a, b) => a.noteBox.y - b.noteBox.y);
 }
 
 // ── API 핸들러 ────────────────────────────────────────────────────────────────
@@ -388,40 +592,99 @@ export async function POST(req: NextRequest) {
   if (!root) return NextResponse.json({ error: "노드를 찾을 수 없습니다." }, { status: 404 });
 
   // 직접 자식 분류
-  const classified = classifyChildren(root);
-  const { wireframes: wfNodes, descNodes, policyNodes, uiNoteNodes, considerNodes } = classified;
+  let classified = classifyChildren(root);
+  let effectiveRoot = root;
+
+  // ── 단건 프레임 폴백 감지 → 상위 섹션 자동 확장 ────────────────────────
+  const rootBbox = root.absoluteBoundingBox;
+  // classifyChildren 폴백 = root 자체가 유일한 와이어프레임 → 상위 섹션으로 확장 시도
+  const isSingleFrameFallback =
+    classified.wireframes.length === 1 &&
+    classified.wireframes[0].id === root.id;
+
+  if (isSingleFrameFallback) {
+    console.log("[figma-parse] single-frame fallback detected, searching for parent section...");
+    const parentId = await findParentSectionId(fileKey, nodeId, FIGMA_TOKEN!);
+    if (parentId) {
+      console.log("[figma-parse] found parent section:", parentId);
+      const parentRes = await fetch(
+        `https://api.figma.com/v1/files/${fileKey}/nodes?ids=${encodeURIComponent(parentId)}`,
+        { headers: { "X-Figma-Token": FIGMA_TOKEN! }, signal: AbortSignal.timeout(30000) }
+      );
+      if (parentRes.ok) {
+        const parentData = await parentRes.json();
+        const parentNode: FigmaNode | undefined = parentData.nodes?.[parentId]?.document;
+        if (parentNode) {
+          const parentBox = parentNode.absoluteBoundingBox;
+
+          // 부모 자체가 디바이스 화면 크기(POS / 모바일)이면 그대로 사용
+          if (parentBox && isDeviceSizedScreen(parentBox)) {
+            console.log("[figma-parse] parent IS a device screen, using directly:", parentNode.name, `${parentBox.width}x${parentBox.height}`);
+            effectiveRoot = parentNode;
+            classified = {
+              wireframes: [parentNode],
+              descNodes: [], policyNodes: [], uiNoteNodes: [], considerNodes: [],
+            };
+          } else {
+            // 부모가 컨테이너 섹션인 경우 → 자녀 분류
+            const parentClassified = classifyChildren(parentNode);
+            if (parentClassified.wireframes.length >= 1 && parentClassified.wireframes.length <= 30) {
+              console.log("[figma-parse] expanded to parent:", parentClassified.wireframes.length, "wireframes");
+              effectiveRoot = parentNode;
+              classified = parentClassified;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  const { wireframes: rawWfNodes, descNodes, policyNodes, uiNoteNodes, considerNodes } = classified;
+
+  // 빨간 수정범위 마크업 필터 (classifyNode에서도 걸러지지만 이중 보호)
+  const wfNodes = rawWfNodes.filter(w => !isVersionMarkupNode(w));
 
   console.log("[figma-parse] wireframes:", wfNodes.map(w => `"${w.name}" ${w.absoluteBoundingBox?.width}x${w.absoluteBoundingBox?.height}`));
   console.log("[figma-parse] descNodes:", descNodes.map(n => `"${n.name}"`));
   console.log("[figma-parse] policyNodes:", policyNodes.map(n => `"${n.name}"`));
-  console.log("[figma-parse] considerNodes:", considerNodes.map(n => `"${n.name}"`));
 
-  // 모달 분리
-  const rootBox = root.absoluteBoundingBox;
-  const mainWfs = wfNodes.filter(w => !isModalFrame(w, rootBox ?? undefined));
-  const modalWfs = wfNodes.filter(w => isModalFrame(w, rootBox ?? undefined));
-  const allWfs = mainWfs.length > 0 ? [...mainWfs, ...modalWfs] : wfNodes;
+  // ── 초록 포스트잇 섹션 감지 ──────────────────────────────────────────────
+  const greenNotes = findGreenStickyNotes(effectiveRoot);
+  console.log("[figma-parse] green notes:", greenNotes.map(n => `"${n.title}"`));
 
-  // ── Phase 2 (40–80%): 텍스트/표 구조화 ──────────────────────────────────
+  let figmaSectionGroups: FigmaSectionGroup[] = [];
+  if (greenNotes.length >= 1) {
+    figmaSectionGroups = groupByStickyNotes(
+      greenNotes, wfNodes, descNodes, policyNodes, uiNoteNodes, considerNodes
+    );
+    console.log("[figma-parse] section groups:", figmaSectionGroups.map(g =>
+      `"${g.sectionTitle}" (wf:${g.wireframeNodes.length} desc:${g.descNodes.length})`
+    ));
+  }
 
-  // 디스크립션 계층 그룹 추출
+  // ── allWfs: 섹션 모드면 섹션별 wireframe 합산, 아니면 기존 모달분리 ────────
+  const rootBox = effectiveRoot.absoluteBoundingBox;
+  const modalWfsSet = new Set<string>();
+  let allWfs: FigmaNode[];
+
+  if (figmaSectionGroups.length > 0) {
+    allWfs = figmaSectionGroups.flatMap(g => g.wireframeNodes);
+  } else {
+    const mainWfs = wfNodes.filter(w => !isModalFrame(w, rootBox ?? undefined));
+    const modalWfs = wfNodes.filter(w => isModalFrame(w, rootBox ?? undefined));
+    modalWfs.forEach(w => modalWfsSet.add(w.id));
+    allWfs = mainWfs.length > 0 ? [...mainWfs, ...modalWfs] : wfNodes;
+  }
+
+  // ── Phase 2 (40–80%): 텍스트/표 구조화 (non-sectioned fallback용) ─────────
+
   const descriptionGroups: DescGroup[] = descNodes.length > 0
     ? descNodes.flatMap(n => extractDescriptionGroups(n))
     : [];
-
-  // 레거시 flat 배열 (backward compat)
   const descriptions: string[] = descriptionGroups.flatMap(g => [g.title, ...g.subItems.map(s => s.text)]).filter(Boolean);
-
-  // 정책 텍스트
   const policyNote = policyNodes.map(n => extractAllText(n, /^정책$/)).filter(Boolean).join("\n\n");
-
-  // UI 참고사항
   const uiNote = uiNoteNodes.map(n => extractAllText(n, /^(UI\s*참고사항|★\s*UI\s*참고사항)$/i)).filter(Boolean).join("\n\n");
-
-  // 고려사항
   const considerationNote = considerNodes.map(n => extractAllText(n, /^(확인|고려사항|★\s*고려사항)$/i)).filter(Boolean).join("\n\n");
-
-  // 표 데이터
   const tables: TableData[] = [...descNodes, ...policyNodes].flatMap(n => {
     const tbl = detectTable(n);
     return tbl ? [tbl] : [];
@@ -437,9 +700,12 @@ export async function POST(req: NextRequest) {
   const sections: WireframeSection[] = allWfs.map(wf => ({
     name: wf.name,
     imageUrl: "", imageBase64: "", imageMimeType: "image/png",
-    badges: extractBadges(wf),
-    isModal: modalWfs.includes(wf),
+    badges: extractBadges(wf, effectiveRoot),
+    isModal: modalWfsSet.has(wf.id),
   }));
+
+  // nodeId → section index 맵 (이미지 배치 후 figmaSections 구성에 사용)
+  const nodeIdToIdx = new Map<string, number>(allWfs.map((wf, i) => [wf.id, i]));
 
   let exportError: string | null = null;
 
@@ -455,7 +721,6 @@ export async function POST(req: NextRequest) {
       if (exportRes.ok) {
         const exportData = await exportRes.json();
         const imageUrls = exportData.images as Record<string, string | null>;
-
         const sb = createAdminClient();
 
         await Promise.all(allWfs.map(async (wf, i) => {
@@ -468,12 +733,10 @@ export async function POST(req: NextRequest) {
             const buf = await imgRes.arrayBuffer();
             const mimeType = imgRes.headers.get("content-type") ?? "image/png";
             const ext = mimeType.split("/")[1]?.split(";")[0] ?? "png";
-
             const storagePath = `figma/${fileKey}/${dashId}-${Date.now()}.${ext}`;
             const { error: upErr } = await sb.storage
               .from("wireframes")
               .upload(storagePath, Buffer.from(buf), { contentType: mimeType, upsert: true });
-
             if (upErr) {
               sections[i] = { ...sections[i], imageBase64: Buffer.from(buf).toString("base64"), imageMimeType: mimeType };
             } else {
@@ -493,7 +756,27 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ── 섹션 모드: figmaSections 구성 ────────────────────────────────────────
+  const figmaSectionsResult = figmaSectionGroups.length > 0
+    ? figmaSectionGroups.map(grp => ({
+        sectionTitle: grp.sectionTitle,
+        wireframes: grp.wireframeNodes.map(wf => {
+          const idx = nodeIdToIdx.get(wf.id);
+          return idx !== undefined ? sections[idx] : {
+            name: wf.name, imageUrl: "", imageBase64: "", imageMimeType: "image/png",
+            badges: [] as BadgeMark[], isModal: false,
+          };
+        }),
+        descriptionGroups: grp.descNodes.flatMap(n => extractDescriptionGroups(n)),
+        policyNote: grp.policyNodes.map(n => extractAllText(n, /^정책$/)).filter(Boolean).join("\n\n"),
+        uiNote: grp.uiNoteNodes.map(n => extractAllText(n, /^(UI\s*참고사항|★\s*UI\s*참고사항)$/i)).filter(Boolean).join("\n\n"),
+        considerationNote: grp.considerNodes.map(n => extractAllText(n, /^(확인|고려사항|★\s*고려사항)$/i)).filter(Boolean).join("\n\n"),
+      }))
+    : [];
+
   return NextResponse.json({
+    // 초록 포스트잇 섹션 결과 (있을 때만 non-empty)
+    figmaSections: figmaSectionsResult,
     // 단건 호환 필드
     wireframeName: sections[0]?.name ?? "",
     wireframeCount: sections.length,
@@ -507,9 +790,12 @@ export async function POST(req: NextRequest) {
     uiNote,
     considerationNote,
     tables,
-    // 전체 섹션 (벌크 임포트)
+    // 전체 섹션 (벌크 임포트 fallback)
     sections,
     _debug: {
+      greenNotesFound: greenNotes.length,
+      greenNoteTitles: greenNotes.map(n => n.title),
+      figmaSectionsCount: figmaSectionsResult.length,
       wireframesFound: allWfs.length,
       wireframeNames: allWfs.map(w => `${w.name} (${w.absoluteBoundingBox?.width}x${w.absoluteBoundingBox?.height})`),
       descCount: descNodes.length,

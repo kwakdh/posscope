@@ -232,17 +232,13 @@ export function ProductTabs({ products, currentUserName, canEdit }: ProductTabsP
                       </span>
                     )}
                   </div>
-                  {selected.itemType === "home" ? (
-                    <p className="mt-4 text-sm text-ink-muted">첫화면입니다.</p>
-                  ) : (
-                    <FeatureDetail
-                      key={selected.id}
-                      itemType={selected.itemType}
-                      itemId={selected.id}
-                      currentUserName={currentUserName}
-                      canEdit={canEdit}
-                    />
-                  )}
+                  <FeatureDetail
+                    key={selected.id}
+                    itemType={selected.itemType === "home" ? "category" : selected.itemType}
+                    itemId={selected.id}
+                    currentUserName={currentUserName}
+                    canEdit={canEdit}
+                  />
                 </div>
               )}
             </main>
