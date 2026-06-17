@@ -513,7 +513,7 @@ export function FeatureDetail({
               // prev 자체가 비어 있었던 경우 (emptyPolicy는 state 밖에 있음) → 그냥 추가
               return [...prev, updated];
             })}
-            onDelete={canEdit && activeTabKind !== "current" && !!policy.id ? () => handleDeleteSection(policy.id) : undefined}
+            onDelete={canEdit && !!policy.id ? () => handleDeleteSection(policy.id) : undefined}
             onAddDraft={draft => setPolicies(prev => [...prev, draft])}
             currentUserName={currentUserName}
             canEdit={canEdit && activeTabKind !== "current"}
