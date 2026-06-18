@@ -12,12 +12,15 @@ export function InfiniteCanvas({
   children,
   className,
   initialScale = 1,
+  fitTrigger = 0,
 }: {
   children: ReactNode;
   className?: string;
   initialScale?: number;
+  fitTrigger?: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const contentDivRef = useRef<HTMLDivElement>(null);
   const [t, setT] = useState<Transform>({ x: 40, y: 32, scale: initialScale });
   const [isPanning, setIsPanning] = useState(false);
   const [spaceDown, setSpaceDown] = useState(false);
@@ -43,6 +46,28 @@ export function InfiniteCanvas({
     el.addEventListener("wheel", handler, { passive: false });
     return () => el.removeEventListener("wheel", handler);
   }, []);
+
+  // Zoom to Fit
+  useEffect(() => {
+    if (!fitTrigger) return;
+    const raf1 = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const container = containerRef.current;
+        const content = contentDivRef.current;
+        if (!container || !content) return;
+        const cw = container.clientWidth;
+        const ch = container.clientHeight;
+        const nw = content.offsetWidth;
+        const nh = content.offsetHeight;
+        if (!nw || !nh) return;
+        const pad = 48;
+        const scale = Math.min((cw - pad * 2) / nw, (ch - pad * 2) / nh);
+        const fitScale = Math.max(MIN_SCALE, Math.min(scale, 1.0));
+        setT({ x: (cw - nw * fitScale) / 2, y: (ch - nh * fitScale) / 2, scale: fitScale });
+      });
+    });
+    return () => cancelAnimationFrame(raf1);
+  }, [fitTrigger]);
 
   // Space key → pan mode
   useEffect(() => {
@@ -109,6 +134,7 @@ export function InfiniteCanvas({
 
       {/* Transformed canvas */}
       <div
+        ref={contentDivRef}
         style={{
           position: "absolute",
           top: 0,

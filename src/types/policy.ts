@@ -1,6 +1,6 @@
 // ── 공유 데이터 타입 ──────────────────────────────────────────────────────────
 
-export type PolicyMode = "image" | "figma" | "ai";
+export type PolicyMode = "image" | "figma" | "ai" | "canvas";
 
 /** 이미지 위 번호 배지 — pinNumber는 "1", "3-1", "3-2" 같은 문자열 */
 export type BadgeMark = {
@@ -84,6 +84,12 @@ export type Policy = {
   sort_order: number;
   author_name: string | null;
   updated_at: string | null;
+  version_major: number;
+  version_minor: number;
+  is_locked: boolean;
+  publish_type: string | null;
+  change_log: string;
+  published_at: string | null;
 };
 
 /** DB row를 클라이언트 Policy 타입으로 정규화 */
@@ -145,5 +151,11 @@ export function normalizePolicy(raw: Record<string, unknown>): Policy {
     description_items: Array.isArray(p.description_items) ? p.description_items : [],
     description_groups: descGroups,
     image_badges: Array.isArray(p.image_badges) ? migrateBadges(p.image_badges) : [],
+    version_major: (p as Policy).version_major ?? 1,
+    version_minor: (p as Policy).version_minor ?? 0,
+    is_locked: (p as Policy).is_locked ?? false,
+    publish_type: (p as Policy).publish_type ?? null,
+    change_log: (p as Policy).change_log ?? "",
+    published_at: (p as Policy).published_at ?? null,
   };
 }

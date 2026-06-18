@@ -22,6 +22,9 @@ type Props = {
   hoveredPinNumber?: string | null;
   onBadgeHover?: (pin: string | null) => void;
   onBadgeClick?: (pin: string) => void;
+  onBadgeCreate?: (pin: string) => void;
+  onAIEnhance?: (wf: WireframeItem) => void;
+  onFigmaReimport?: () => void;
   canEdit: boolean;
 };
 

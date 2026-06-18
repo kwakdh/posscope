@@ -60,14 +60,11 @@ function extractBadges(wfNode: FigmaNode, parentNode?: FigmaNode): BadgeMark[] {
     return m ? m[1] : null;
   }
 
-  function hasColoredFill(node: FigmaNode): boolean {
+  function hasRedFill(node: FigmaNode): boolean {
     return (node.fills ?? []).some(f => {
       if (f.type !== "SOLID" || !f.color) return false;
       const { r, g, b } = f.color;
-      if (r > 0.55 && g < 0.45 && b < 0.45) return true;
-      const max = Math.max(r, g, b);
-      const min = Math.min(r, g, b);
-      return max > 0.4 && (max - min) > 0.35;
+      return r > 0.55 && g < 0.45 && b < 0.45; // 빨강 계열만 허용
     });
   }
 
@@ -100,10 +97,8 @@ function extractBadges(wfNode: FigmaNode, parentNode?: FigmaNode): BadgeMark[] {
       }
 
       if (pin !== null) {
-        const isTinyBadge = nb.width <= 40 && nb.height <= 40;
-        const isColoredBadge = hasColoredFill(node) ||
-          (node.children ?? []).some(c => hasColoredFill(c));
-        if (isTinyBadge || isColoredBadge || parsePin(node.name) !== null) {
+        const isRed = hasRedFill(node) || (node.children ?? []).some(c => hasRedFill(c));
+        if (isRed) {
           const cx = ((nb.x + nb.width / 2 - wfBox.x) / wfBox.width) * 100;
           const cy = ((nb.y + nb.height / 2 - wfBox.y) / wfBox.height) * 100;
           if (cx >= -5 && cx <= 105 && cy >= -5 && cy <= 105) {

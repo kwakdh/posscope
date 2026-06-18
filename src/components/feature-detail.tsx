@@ -576,6 +576,17 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
   const [figmaProgress, setFigmaProgress] = useState(0);
   const [figmaImporting, setFigmaImporting] = useState(false);
 
+  // ── Zoom to Fit 트리거 ───────────────────────────────────────────────────
+  const [fitTrigger, setFitTrigger] = useState(0);
+  const hasFitOnMount = useRef(false);
+  useEffect(() => {
+    if (!hasFitOnMount.current && wireframes.length > 0) {
+      hasFitOnMount.current = true;
+      setTimeout(() => setFitTrigger(n => n + 1), 200);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wireframes.length]);
+
   // ── AI 모드 상태 ────────────────────────────────────────────────────────
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiRefImage, setAiRefImage] = useState<{ data: string; mimeType: string } | null>(null);
@@ -855,6 +866,7 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
 
       const finalWfs = nextWfs.length > 0 ? nextWfs : wireframes;
       setWireframes(finalWfs);
+      setFitTrigger(n => n + 1);
       if (autoFlowSteps.length > 0) setFlowSteps(autoFlowSteps);
 
       await persist({
@@ -1150,7 +1162,7 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
         <div className="flex" style={{ height: 'calc(100vh - 160px)', minHeight: 700 }}>
 
           {/* 무한 캔버스 영역 */}
-          <InfiniteCanvas key={mode} className="flex-1 min-w-0" initialScale={mode === "ai" ? 1 : 0.5}>
+          <InfiniteCanvas key={mode} className="flex-1 min-w-0" initialScale={mode === "ai" ? 1 : 0.5} fitTrigger={fitTrigger}>
             {/* AI 모드 */}
             {mode === "ai" && (
               <div className="flex gap-6">
@@ -1568,7 +1580,7 @@ function DescriptionPanel({
                               fontSize: 9,
                               transform: isSubActive ? "scale(1.15)" : isSubHovered ? "scale(1.07)" : "scale(1)",
                             }}
-                            className="mt-0.5 flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded px-1 font-bold text-white transition-transform duration-150">
+                            className="mt-0.5 flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full px-1 font-bold text-white transition-transform duration-150">
                             {sub.pinNumber}
                           </span>
                           <AutoResizeTextarea
