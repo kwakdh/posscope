@@ -587,6 +587,7 @@ export async function POST(req: NextRequest) {
 
   const { wireframes: rawWfNodes, descNodes, policyNodes, uiNoteNodes, considerNodes } = classified;
   const wfNodes = rawWfNodes.filter(w => !isVersionMarkupNode(w));
+  console.log("[figma-parse] classified wfs:", rawWfNodes.map(w => `${w.id}(${w.absoluteBoundingBox?.width}x${w.absoluteBoundingBox?.height})`), "descs:", descNodes.length);
 
   // ── 초록 포스트잇 섹션 감지 ──────────────────────────────────────────────
   const greenNotes = findGreenStickyNotes(effectiveRoot);
@@ -602,7 +603,13 @@ export async function POST(req: NextRequest) {
 
   if (figmaSectionGroups.length > 0) {
     allWfs = figmaSectionGroups.flatMap(g => g.wireframeNodes);
+    // 섹션 그룹에 와이어프레임이 없으면 일반 경로로 폴백
+    if (allWfs.length === 0) figmaSectionGroups = [];
   } else {
+    allWfs = [];
+  }
+
+  if (figmaSectionGroups.length === 0) {
     const mainWfs  = wfNodes.filter(w => !isModalFrame(w, rootBox ?? undefined));
     const modalWfs = wfNodes.filter(w =>  isModalFrame(w, rootBox ?? undefined));
     modalWfs.forEach(w => modalWfsSet.add(w.id));
@@ -655,9 +662,10 @@ export async function POST(req: NextRequest) {
       // node ID는 `:` 원본 포맷 그대로 사용 — encodeURIComponent 금지
       // (encode 시 응답 키가 `123:456`인데 lookup이 `123%3A456`으로 달라져 매칭 실패)
       const exportIds = allWfs.map(w => w.id).join(",");
+      console.log("[figma-parse] Phase3 export ids:", exportIds, "count:", allWfs.length);
       const exportRes = await fetch(
         `https://api.figma.com/v1/images/${fileKey}?ids=${exportIds}&format=png&scale=1`,
-        { headers: { "X-Figma-Token": FIGMA_TOKEN }, signal: AbortSignal.timeout(12000) }
+        { headers: { "X-Figma-Token": FIGMA_TOKEN }, signal: AbortSignal.timeout(25000) }
       );
 
       if (!exportRes.ok) {
@@ -666,6 +674,7 @@ export async function POST(req: NextRequest) {
       } else {
         const exportData = await exportRes.json();
         const imageUrls = (exportData.images ?? {}) as Record<string, string | null>;
+        console.log("[figma-parse] images API keys:", Object.keys(imageUrls), "nulls:", Object.values(imageUrls).filter(v => !v).length);
 
         await Promise.all(allWfs.map(async (wf, i) => {
           const dashId = wf.id.replace(/:/g, "-");
@@ -707,7 +716,8 @@ export async function POST(req: NextRequest) {
           }
 
           // ── 3단계: base64 폴백 (클라이언트가 anon 키로 Supabase 업로드) ──
-          sections[i] = { ...sections[i], imageBase64: Buffer.from(imgBuf).toString("base64"), imageMimeType: mimeType };
+          // imageUrl(S3)도 함께 보존 → 클라이언트 업로드 실패 시 <img src>로 즉시 표시 가능
+          sections[i] = { ...sections[i], imageUrl: figmaImgUrl, imageBase64: Buffer.from(imgBuf).toString("base64"), imageMimeType: mimeType };
         }));
       }
     } catch (e) {
