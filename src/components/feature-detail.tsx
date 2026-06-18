@@ -441,52 +441,9 @@ export function FeatureDetail({
         )}
       </div>
 
-      {/* ── Figma URL 바 (모든 탭 — [현행] 포함) ── */}
-      {canEdit && (
-        <div className="flex items-center gap-2 rounded-xl bg-zinc-50 px-3 py-1.5">
-          {editingTabFigmaId === activeTabKind ? (
-            <>
-              <FigmaLogo />
-              <input autoFocus type="url" value={tabFigmaInput} onChange={e => setTabFigmaInput(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") handleSaveTabFigmaUrl(activeTabKind); if (e.key === "Escape") setEditingTabFigmaId(null); }}
-                placeholder="https://www.figma.com/design/..."
-                className="flex-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs outline-none focus:border-brand/40 focus:ring-2 focus:ring-brand/20" />
-              <button type="button" onClick={() => handleSaveTabFigmaUrl(activeTabKind)} className="rounded-md bg-brand px-2.5 py-1 text-[11px] font-bold text-white hover:bg-brand/90">저장</button>
-              <button type="button" onClick={() => setEditingTabFigmaId(null)} className="rounded-md px-2.5 py-1 text-[11px] font-bold text-zinc-400 hover:bg-zinc-100">취소</button>
-            </>
-          ) : activeTabMeta.figma_url ? (
-            <>
-              <FigmaLogo />
-              <span className="flex-1 truncate text-[11px] text-zinc-400">{activeTabMeta.figma_url}</span>
-              <button type="button" onClick={() => { setTabFigmaInput(activeTabMeta.figma_url ?? ""); setEditingTabFigmaId(activeTabKind); }} className="shrink-0 rounded-md px-2.5 py-1 text-[11px] font-bold text-zinc-400 hover:bg-zinc-100">편집</button>
-              <button type="button" disabled={bulkImporting} onClick={() => handleBulkImport(activeTabMeta)}
-                className="shrink-0 rounded-md bg-brand px-2.5 py-1 text-[11px] font-bold text-white hover:bg-brand/90 disabled:opacity-50">
-                {bulkImporting ? "가져오는 중..." : "전체 불러오기"}
-              </button>
-            </>
-          ) : (
-            <button type="button" onClick={() => { setTabFigmaInput(""); setEditingTabFigmaId(activeTabKind); }}
-              className="flex items-center gap-1.5 text-[11px] font-bold text-zinc-400 hover:text-brand">
-              <FigmaLogo />피그마 URL 연결하기
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* ── 피그마 진행률 바 ── */}
-      {bulkImporting && <ProgressBar progress={bulkProgress} label={bulkLabel || "불러오는 중..."} />}
-      {bulkError && <p className="px-1 text-[11px] text-red-500">{bulkError}</p>}
-
-      {/* ── [현행] 읽기전용 배너 ── */}
-      {activeTabKind === "current" && activePolicies.length > 0 && (
-        <div className="flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-1.5 text-xs text-amber-700">
-          🔒 현행 버전은 참조 전용입니다. 수정하려면 <strong>+ 추가</strong> 탭을 생성하세요.
-        </div>
-      )}
-
       {/* ── 섹션 목록 ── */}
       <div className="flex flex-col gap-4">
-        {activeTabKind !== "current" && displayPolicies.length === 0 && !bulkImporting && (
+        {displayPolicies.length === 0 && !bulkImporting && (
           <p className="px-1 text-sm text-zinc-400">섹션이 없습니다. 아래 버튼으로 추가하거나 피그마에서 불러오세요.</p>
         )}
         {displayPolicies.map(policy => (
@@ -497,26 +454,22 @@ export function FeatureDetail({
             itemType={itemType}
             itemId={itemId}
             onSaved={updated => setPolicies(prev => {
-              // UPDATE: id가 일치하는 항목 교체
               if (prev.some(p => p.id && p.id === updated.id)) {
                 return prev.map(p => p.id === updated.id ? updated : p);
               }
-              // INSERT: empty policy(id="")였다가 처음 저장된 경우 → 추가
               const hasEmpty = prev.some(p => !p.id && p.kind === updated.kind && p.item_id === updated.item_id);
               if (hasEmpty) {
                 return prev.map(p => (!p.id && p.kind === updated.kind && p.item_id === updated.item_id) ? updated : p);
               }
-              // prev 자체가 비어 있었던 경우 (emptyPolicy는 state 밖에 있음) → 그냥 추가
               return [...prev, updated];
             })}
             onDelete={canEdit && !!policy.id ? () => handleDeleteSection(policy.id) : undefined}
             onAddDraft={draft => setPolicies(prev => [...prev, draft])}
             currentUserName={currentUserName}
-            canEdit={canEdit && activeTabKind !== "current"}
-            canImportFigma={canEdit}
+            canEdit={canEdit}
           />
         ))}
-        {canEdit && activeTabKind !== "current" && (
+        {canEdit && (
           <button type="button" onClick={() => handleAddSection(activeTabKind)}
             className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-gray-500 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100 hover:text-gray-700 transition-colors">
             + 섹션 추가
@@ -531,14 +484,13 @@ export function FeatureDetail({
 // PolicyCard
 // ──────────────────────────────────────────────────────────────────────────────
 
-function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAddDraft, currentUserName, canEdit, canImportFigma }: {
+function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAddDraft, currentUserName, canEdit }: {
   policy: Policy; tabName: string; itemType: ItemType; itemId: string;
   onSaved: (p: Policy) => void;
   onDelete?: () => void;
   onAddDraft?: (p: Policy) => void;
-  currentUserName: string; canEdit: boolean; canImportFigma?: boolean;
+  currentUserName: string; canEdit: boolean;
 }) {
-  const _canImportFigma = canImportFigma ?? canEdit;
   const [title, setTitle] = useState(policy.title);
   const [mode, setMode] = useState<PolicyMode>(policy.mode);
   const [wireframes, setWireframes] = useState<WireframeItem[]>(policy.wireframes);
@@ -1029,7 +981,7 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
 
   return (
     <div className="flex flex-col gap-2">
-      {/* ── 카드 헤더: 배지 + 버전 + 타이틀 + 저장 버튼 한 줄 ── */}
+      {/* ── 카드 헤더: 배지 + 버전 + 타이틀 + 모드 버튼 + 저장 버튼 한 줄 ── */}
       <div className="flex items-center gap-1.5 px-1">
         <span className={`shrink-0 rounded px-2 py-0.5 text-[11px] font-bold ${badgeStyle}`}>{tabName}</span>
         <span className={`shrink-0 rounded px-2 py-0.5 text-[11px] font-bold ${versionBadgeStyle}`}>
@@ -1046,23 +998,26 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
         {onDelete && !isLocked && (
           <button type="button" onClick={() => setShowDeleteConfirm(true)} className="shrink-0 rounded p-1 text-zinc-400 hover:bg-red-50 hover:text-red-500">🗑</button>
         )}
+        {/* 모드 버튼: 시안 불러오기 / AI 생성 */}
+        <button type="button"
+          onClick={canEdit ? () => {
+            if (mode !== "canvas") { setMode("canvas"); persist({ mode: "canvas" }); }
+            setShowFigmaInput(true);
+          } : undefined}
+          className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${mode === "canvas" ? "bg-brand/10 text-brand" : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200 hover:text-ink"} ${!canEdit ? "pointer-events-none" : ""}`}>
+          🖼️ 시안 불러오기
+        </button>
+        <button type="button"
+          onClick={canEdit ? () => { setMode("ai"); persist({ mode: "ai" }); } : undefined}
+          className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${mode === "ai" ? "bg-brand/10 text-brand" : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200 hover:text-ink"} ${!canEdit ? "pointer-events-none" : ""}`}>
+          ✨ AI 생성
+        </button>
         {canEdit && !isLocked && (
           <button type="button" onClick={() => setShowSaveModal(true)} disabled={publishing}
-            className={`shrink-0 rounded px-2.5 py-0.5 text-[11px] font-bold transition-colors disabled:opacity-40 ${isDirty || !policy.id ? "bg-brand text-white hover:bg-brand/90" : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"}`}>
-            {publishing ? "처리 중..." : (isDirty || !policy.id) ? "💾 저장" : "✓ 저장됨"}
+            className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-40 ${isDirty || !policy.id ? "bg-brand text-white hover:bg-brand/90" : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"}`}>
+            {publishing ? "처리 중..." : (isDirty || !policy.id) ? "💾 저장 / 발행" : "✓ 저장됨"}
           </button>
         )}
-      </div>
-
-      {/* ── 모드 스위처 (컴팩트) ── */}
-      <div className="flex items-center gap-1 self-start rounded-lg bg-zinc-100 p-0.5">
-        {([["canvas", "🖼️ 시안 불러오기"], ["ai", "✨ AI 생성"]] as [PolicyMode, string][]).map(([m, label]) => (
-          <button key={m} type="button"
-            onClick={canEdit ? () => { setMode(m); persist({ mode: m }); } : undefined}
-            className={`rounded-md px-3 py-1 text-xs font-bold transition-colors ${mode === m ? "bg-white text-ink shadow-sm" : "text-zinc-500 hover:text-ink"} ${!canEdit ? "pointer-events-none" : ""}`}>
-            {label}
-          </button>
-        ))}
       </div>
 
       {/* ── 카드 본문: 무한 캔버스 + 리사이즈 패널 ── */}
@@ -1122,7 +1077,7 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
         )}
 
         {/* ── 피그마 임포트 단건 UI (canvas 모드 공통) ── */}
-        {mode === "canvas" && _canImportFigma && (
+        {mode === "canvas" && canEdit && (
           <div className="border-b border-zinc-100 px-3 py-2">
             {figmaImporting ? (
               <ProgressBar progress={figmaProgress} label={figmaProgress < 40 ? "피그마 레이어 분석 중..." : figmaProgress < 80 ? "텍스트/표 데이터 매핑 중..." : figmaProgress < 100 ? "와이어프레임 이미지 로딩 중..." : "완료!"} />
@@ -1156,7 +1111,7 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
         )}
 
         {/* ── 본문 레이아웃: [무한 캔버스] | [드래그 핸들] | [우측 패널] ── */}
-        <div className="flex h-[calc(100vh-100px)] min-h-[640px]">
+        <div className="flex h-[calc(100vh-80px)] min-h-[600px]">
 
           {/* 무한 캔버스 영역 */}
           <InfiniteCanvas key={mode} className="flex-1 min-w-0" initialScale={mode === "ai" ? 1 : 0.5} fitTrigger={fitTrigger}>
