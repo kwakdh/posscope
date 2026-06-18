@@ -498,16 +498,9 @@ export function FeatureDetail({
       {bulkImporting && <ProgressBar progress={bulkProgress} label={bulkLabel || "불러오는 중..."} />}
       {bulkError && <p className="px-1 text-xs text-red-500">{bulkError}</p>}
 
-      {/* ── [현행] 읽기전용 배너 ── */}
-      {activeTabKind === "current" && activePolicies.length > 0 && (
-        <div className="flex items-center gap-2 rounded-2xl bg-amber-50 px-4 py-2.5 text-sm text-amber-700">
-          🔒 현행 버전은 참조 전용입니다. 수정하려면 <strong>+ 추가</strong> 탭을 생성하세요.
-        </div>
-      )}
-
       {/* ── 섹션 목록 ── */}
       <div className="flex flex-col gap-8">
-        {activeTabKind !== "current" && displayPolicies.length === 0 && !bulkImporting && (
+        {displayPolicies.length === 0 && !bulkImporting && (
           <p className="px-1 text-sm text-zinc-400">섹션이 없습니다. 아래 버튼으로 추가하거나 피그마에서 불러오세요.</p>
         )}
         {displayPolicies.map(policy => (
@@ -533,11 +526,10 @@ export function FeatureDetail({
             onDelete={canEdit && !!policy.id ? () => handleDeleteSection(policy.id) : undefined}
             onAddDraft={draft => setPolicies(prev => [...prev, draft])}
             currentUserName={currentUserName}
-            canEdit={canEdit && activeTabKind !== "current"}
-            canImportFigma={canEdit}
+            canEdit={canEdit}
           />
         ))}
-        {canEdit && activeTabKind !== "current" && (
+        {canEdit && (
           <button type="button" onClick={() => handleAddSection(activeTabKind)}
             className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-gray-500 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100 hover:text-gray-700 transition-colors">
             + 섹션 추가
@@ -552,12 +544,12 @@ export function FeatureDetail({
 // PolicyCard
 // ──────────────────────────────────────────────────────────────────────────────
 
-function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAddDraft, currentUserName, canEdit, canImportFigma }: {
+function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAddDraft, currentUserName, canEdit }: {
   policy: Policy; tabName: string; itemType: ItemType; itemId: string;
   onSaved: (p: Policy) => void;
   onDelete?: () => void;
   onAddDraft?: (p: Policy) => void;
-  currentUserName: string; canEdit: boolean; canImportFigma?: boolean;
+  currentUserName: string; canEdit: boolean;
 }) {
   const [title, setTitle] = useState(policy.title);
   const [mode, setMode] = useState<PolicyMode>(policy.mode);
@@ -608,6 +600,12 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
   const [enhanceMode, setEnhanceMode] = useState(false);
   const [enhanceSourceName, setEnhanceSourceName] = useState<string | null>(null);
   const aiFileRef = useRef<HTMLInputElement>(null);
+
+  // ── 캔버스 도구 모드 (V=이동, H=패닝) ──────────────────────────────────
+  const [canvasToolMode, setCanvasToolMode] = useState<"hand" | "move">("move");
+
+  // ── 빈 캔버스 이미지 업로드 ────────────────────────────────────────────
+  const emptyUploadRef = useRef<HTMLInputElement>(null);
 
   // ── isDirty 추적 ─────────────────────────────────────────────────────────
   const cleanSnap = useRef(JSON.stringify({
@@ -1155,9 +1153,8 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
           </div>
         )}
 
-        {/* ── 피그마 임포트 단건 UI (canvas 모드, canImportFigma 권한) ── */}
-        {/* [현행] 탭도 포함 — 데이터 로드 후 우측 패널은 canEdit=false로 자동 잠금 */}
-        {mode === "canvas" && (canImportFigma ?? canEdit) && (
+        {/* ── 피그마 다시 불러오기 바 — 이미 시안이 있을 때만 표시 ── */}
+        {mode === "canvas" && canEdit && wireframes.length > 0 && (
           <div className="border-b border-zinc-100 px-4 py-2.5">
             {figmaImporting ? (
               <ProgressBar progress={figmaProgress} label={figmaProgress < 20 ? "피그마 노드 수신 중..." : figmaProgress < 50 ? "노드 파싱 중..." : figmaProgress < 80 ? "이미지 URL 추출 중..." : figmaProgress < 100 ? "이미지 업로드 중..." : "완료!"} />
@@ -1176,25 +1173,21 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
                 <button type="button" onClick={() => { setShowFigmaInput(false); setFigmaUrl(""); }}
                   className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-zinc-400 hover:bg-zinc-100">취소</button>
               </div>
-            ) : wireframes.filter(w => !w.isModal).length > 0 ? (
+            ) : (
               <button type="button" onClick={() => setShowFigmaInput(true)}
                 className="flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-brand">
                 <FigmaLogo />피그마 다시 불러오기
-              </button>
-            ) : (
-              <button type="button" onClick={() => setShowFigmaInput(true)}
-                className="flex w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-zinc-200 py-2.5 text-xs font-bold text-zinc-400 hover:border-brand/40 hover:text-brand">
-                <FigmaLogo />피그마 URL로 가져오기
               </button>
             )}
           </div>
         )}
 
         {/* ── 본문 레이아웃: [무한 캔버스] | [드래그 핸들] | [우측 패널] ── */}
-        <div className="flex" style={{ height: 'calc(100vh - 140px)', minHeight: 680 }}>
+        <div className="relative flex" style={{ height: 'calc(100vh - 140px)', minHeight: 680 }}>
 
           {/* 무한 캔버스 영역 */}
-          <InfiniteCanvas key={mode} className="flex-1 min-w-0" initialScale={mode === "ai" ? 1 : 0.5}>
+          <InfiniteCanvas key={mode} className="flex-1 min-w-0" initialScale={mode === "ai" ? 1 : 0.5}
+            toolMode={canvasToolMode} onToolChange={setCanvasToolMode}>
             {/* AI 모드 */}
             {mode === "ai" && (
               <div className="flex gap-6">
@@ -1233,46 +1226,97 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
               </div>
             )}
 
-            {/* canvas 모드 (이미지/피그마 통합) */}
-            {mode === "canvas" && (
-              <>
-                {wireframes.length === 0 && (
-                  <div
-                    onClick={canEdit ? () => {
-                      const id = crypto.randomUUID();
-                      setWireframes([{ id, url: null, name: title || "화면", badges: [], isModal: false, modalFor: null, order: 0 }]);
-                    } : undefined}
-                    style={{ width: 390, height: 700 }}
-                    className={`flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-zinc-300 bg-white text-zinc-400 ${canEdit ? "cursor-pointer hover:border-brand/40 hover:bg-brand/5" : ""}`}
-                  >
-                    <span className="text-3xl">🖼️</span>
-                    <span className="text-sm">시안이 없습니다</span>
-                    {canEdit && <span className="text-xs opacity-60">이미지 업로드하거나 피그마에서 가져오세요</span>}
-                  </div>
-                )}
-                {wireframes.length > 0 && (
-                  <WireframeCanvas
-                    wireframes={wireframes} flowSteps={flowSteps}
-                    onWireframesChange={handleWfsChange} onFlowStepsChange={handleFlowChange}
-                    onUpload={handleUpload}
-                    activePinNumber={activePinNumber}
-                    hoveredPinNumber={hoveredPinNumber}
-                    onBadgeHover={setHoveredPinNumber}
-                    onBadgeClick={handleBadgeClick}
-                    onBadgeCreate={canEdit ? (pin) => {
-                      setDescGroups(prev => {
-                        if (prev.some(g => g.pinNumber === pin)) return prev;
-                        const next = [...prev, { id: crypto.randomUUID(), pinNumber: pin, title: "", subItems: [] }];
-                        return next.sort((a, b) => (parseInt(a.pinNumber, 10) || 0) - (parseInt(b.pinNumber, 10) || 0));
-                      });
-                    } : undefined}
-                    onAIEnhance={canEdit ? handleAIEnhance : undefined}
-                    canEdit={canEdit}
-                  />
-                )}
-              </>
+            {/* canvas 모드 — 시안이 있을 때만 WireframeCanvas 렌더링 */}
+            {mode === "canvas" && wireframes.length > 0 && (
+              <WireframeCanvas
+                wireframes={wireframes} flowSteps={flowSteps}
+                onWireframesChange={handleWfsChange} onFlowStepsChange={handleFlowChange}
+                onUpload={handleUpload}
+                activePinNumber={activePinNumber}
+                hoveredPinNumber={hoveredPinNumber}
+                onBadgeHover={setHoveredPinNumber}
+                onBadgeClick={handleBadgeClick}
+                onBadgeCreate={canEdit ? (pin) => {
+                  setDescGroups(prev => {
+                    if (prev.some(g => g.pinNumber === pin)) return prev;
+                    const next = [...prev, { id: crypto.randomUUID(), pinNumber: pin, title: "", subItems: [] }];
+                    return next.sort((a, b) => (parseInt(a.pinNumber, 10) || 0) - (parseInt(b.pinNumber, 10) || 0));
+                  });
+                } : undefined}
+                onAIEnhance={canEdit ? handleAIEnhance : undefined}
+                toolMode={canvasToolMode}
+                canEdit={canEdit}
+              />
             )}
           </InfiniteCanvas>
+
+          {/* ── 빈 캔버스 통합 폼 오버레이 (시안 없을 때) ── */}
+          {mode === "canvas" && wireframes.length === 0 && (
+            <div
+              className="pointer-events-none absolute inset-0 flex items-center justify-center"
+              style={{ right: rightWidth + 6 }}
+            >
+              <div className="pointer-events-auto flex w-80 flex-col gap-5 rounded-3xl bg-white p-8 shadow-xl">
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-zinc-600">시안을 불러와 기획을 시작하세요</p>
+                  <p className="mt-1 text-xs text-zinc-400">피그마에서 직접 가져오거나 이미지를 업로드하세요</p>
+                </div>
+
+                {/* 피그마 섹션 */}
+                {figmaImporting ? (
+                  <ProgressBar progress={figmaProgress} label={figmaProgress < 20 ? "피그마 노드 수신 중..." : figmaProgress < 50 ? "노드 파싱 중..." : figmaProgress < 80 ? "이미지 URL 추출 중..." : figmaProgress < 100 ? "이미지 업로드 중..." : "완료!"} />
+                ) : showFigmaInput ? (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <FigmaLogo />
+                      <input type="url" autoFocus value={figmaUrl}
+                        onChange={e => setFigmaUrl(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") handleFigmaImport(); if (e.key === "Escape") { setShowFigmaInput(false); setFigmaUrl(""); } }}
+                        placeholder="https://www.figma.com/design/..."
+                        className="flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs outline-none focus:border-brand/40 focus:ring-2 focus:ring-brand/20" />
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={handleFigmaImport}
+                        className="flex-1 rounded-xl bg-brand py-2 text-xs font-bold text-white hover:bg-brand/90">가져오기</button>
+                      <button type="button" onClick={() => { setShowFigmaInput(false); setFigmaUrl(""); }}
+                        className="rounded-xl px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-zinc-100">취소</button>
+                    </div>
+                  </div>
+                ) : canEdit ? (
+                  <button type="button" onClick={() => setShowFigmaInput(true)}
+                    className="flex items-center justify-center gap-2 rounded-2xl border-2 border-zinc-200 py-3 text-xs font-bold text-zinc-500 transition-colors hover:border-brand/40 hover:text-brand">
+                    <FigmaLogo /> 피그마 URL로 가져오기
+                  </button>
+                ) : null}
+
+                {canEdit && !figmaImporting && (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className="h-px flex-1 bg-zinc-100" />
+                      <span className="text-xs text-zinc-400">또는</span>
+                      <div className="h-px flex-1 bg-zinc-100" />
+                    </div>
+                    <button type="button" onClick={() => emptyUploadRef.current?.click()}
+                      className="flex items-center justify-center gap-2 rounded-2xl bg-zinc-50 py-3 text-xs font-bold text-zinc-500 transition-colors hover:bg-brand/5 hover:text-brand">
+                      시안 이미지 업로드
+                    </button>
+                  </>
+                )}
+              </div>
+              <input
+                ref={emptyUploadRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={e => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!f) return;
+                  handleUpload(crypto.randomUUID(), f);
+                }}
+              />
+            </div>
+          )}
 
           {/* 리사이즈 드래그 핸들 */}
           <div

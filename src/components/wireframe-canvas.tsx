@@ -1,7 +1,7 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
-import type { WireframeItem, FlowStep } from "@/types/policy";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { BadgeMark, WireframeItem, FlowStep } from "@/types/policy";
 
 const BADGE_COLORS = ["#ef4444", "#3b82f6", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899"];
 // 부모 핀 번호(하이픈 앞자리)로 색상 결정 — "3-1"은 "3"과 같은 색
@@ -11,6 +11,7 @@ const bc = (pin: string) => {
 };
 
 type Arrow = { id: string; d: string; label: string; mx: number; my: number };
+type SelectedPin = { wfId: string; badgeId: string };
 
 type Props = {
   wireframes: WireframeItem[];
@@ -24,21 +25,26 @@ type Props = {
   onBadgeClick?: (pin: string) => void;
   onBadgeCreate?: (pin: string) => void;
   onAIEnhance?: (wf: WireframeItem) => void;
+  toolMode?: "hand" | "move";
   canEdit: boolean;
 };
 
 export function WireframeCanvas({
   wireframes, flowSteps, onWireframesChange, onFlowStepsChange,
   onUpload, activePinNumber, hoveredPinNumber, onBadgeHover, onBadgeClick,
-  onBadgeCreate: _onBadgeCreate, onAIEnhance: _onAIEnhance, canEdit,
+  onBadgeCreate, onAIEnhance: _onAIEnhance, toolMode, canEdit,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [arrows, setArrows] = useState<Arrow[]>([]);
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
-  // imgLoaded는 WireframeCard 리마운트 시에도 보존되도록 부모에서 관리
   const [imgLoadedMap, setImgLoadedMap] = useState<Record<string, boolean>>({});
+  const [selectedPin, setSelectedPin] = useState<SelectedPin | null>(null);
+
+  // 항상 최신 wireframes를 참조 (drag closure 용)
+  const wireframesRef = useRef(wireframes);
+  useEffect(() => { wireframesRef.current = wireframes; }, [wireframes]);
 
   const mainWfs = wireframes.filter(w => !w.isModal);
   const modals = wireframes.filter(w => w.isModal);
@@ -79,7 +85,99 @@ export function WireframeCanvas({
     setConnectingFrom(null);
   }
 
-  // ── WireframeCard (인라인 함수 — imgLoadedMap을 부모에서 관리해 리마운트 대응) ──
+  // ── Delete key → 선택된 핀 삭제 ────────────────────────────────────────
+  useEffect(() => {
+    if (!selectedPin || !canEdit) return;
+    const handler = (e: KeyboardEvent) => {
+      const tgt = e.target as HTMLElement;
+      if (tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA" || tgt.isContentEditable) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        onWireframesChange(wireframesRef.current.map(w => w.id !== selectedPin.wfId ? w : {
+          ...w,
+          badges: w.badges.filter(b => b.id !== selectedPin.badgeId),
+        }));
+        setSelectedPin(null);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [selectedPin, canEdit]);
+
+  // ── Ctrl+Click → 새 핀 추가 ────────────────────────────────────────────
+  function handleImgCtrlClick(wfId: string, e: React.MouseEvent<HTMLDivElement>) {
+    if (!canEdit) return;
+    const containerEl = cardRefs.current.get(wfId);
+    if (!containerEl) return;
+    const rect = containerEl.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    const currentBadges = wireframesRef.current.find(w => w.id === wfId)?.badges ?? [];
+    const maxPin = currentBadges.reduce((max, b) => {
+      const n = parseInt(b.pinNumber.split("-")[0], 10) || 0;
+      return Math.max(max, n);
+    }, 0);
+    const newPinNumber = String(maxPin + 1);
+    const newBadge: BadgeMark = { id: crypto.randomUUID(), pinNumber: newPinNumber, x, y };
+    onWireframesChange(wireframesRef.current.map(w => w.id !== wfId ? w : {
+      ...w,
+      badges: [...w.badges, newBadge],
+    }));
+    onBadgeCreate?.(newPinNumber);
+    setSelectedPin({ wfId, badgeId: newBadge.id });
+  }
+
+  // ── 핀 드래그 시작 ────────────────────────────────────────────────────
+  function handlePinMouseDown(wfId: string, badge: BadgeMark, e: React.MouseEvent) {
+    if (!canEdit) return;
+    e.stopPropagation();
+    e.preventDefault();
+
+    setSelectedPin({ wfId, badgeId: badge.id });
+
+    const containerEl = cardRefs.current.get(wfId);
+    if (!containerEl) return;
+
+    const startMouseX = e.clientX;
+    const startMouseY = e.clientY;
+    const startPinX = badge.x;
+    const startPinY = badge.y;
+
+    function onMove(me: MouseEvent) {
+      const rect = containerEl!.getBoundingClientRect();
+      const dx = ((me.clientX - startMouseX) / rect.width) * 100;
+      const dy = ((me.clientY - startMouseY) / rect.height) * 100;
+      const nx = Math.max(0, Math.min(100, startPinX + dx));
+      const ny = Math.max(0, Math.min(100, startPinY + dy));
+      onWireframesChange(wireframesRef.current.map(w => w.id !== wfId ? w : {
+        ...w,
+        badges: w.badges.map(b => b.id !== badge.id ? b : { ...b, x: nx, y: ny }),
+      }));
+    }
+
+    function onUp() {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    }
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  // ── 오른쪽 클릭 → 핀 삭제 ────────────────────────────────────────────
+  function handlePinContextMenu(wfId: string, badge: BadgeMark, e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!canEdit) return;
+    onWireframesChange(wireframesRef.current.map(w => w.id !== wfId ? w : {
+      ...w,
+      badges: w.badges.filter(b => b.id !== badge.id),
+    }));
+    if (selectedPin?.wfId === wfId && selectedPin?.badgeId === badge.id) {
+      setSelectedPin(null);
+    }
+  }
+
+  // ── WireframeCard ──────────────────────────────────────────────────────
   function WireframeCard({ wf }: { wf: WireframeItem }) {
     const [menuOpen, setMenuOpen] = useState(false);
     const imgLoaded = imgLoadedMap[wf.id] ?? false;
@@ -90,6 +188,11 @@ export function WireframeCanvas({
 
     function onClick(e: React.MouseEvent<HTMLDivElement>) {
       setMenuOpen(false);
+      // Ctrl+Click → 핀 추가 (이미지 로드된 경우만)
+      if (e.ctrlKey && canEdit && imgLoaded) {
+        handleImgCtrlClick(wf.id, e);
+        return;
+      }
       if (connectingFrom) { confirmConnect(wf.id); }
     }
 
@@ -136,56 +239,53 @@ export function WireframeCanvas({
             </div>
           )}
 
-          {/* ── 투명 핫스팟: 이미지 내 기존 배지 숫자 위에 올라가는 클릭 영역 ── */}
+          {/* ── 인터랙티브 원형 핀 오버레이 ── */}
           {imgLoaded && wf.badges.map(b => {
             const color = bc(b.pinNumber);
             const isActive = activePinNumber === b.pinNumber;
-            const isHovered = hoveredPinNumber === b.pinNumber;
+            const isHoveredFromPanel = hoveredPinNumber === b.pinNumber;
+            const isSelected = selectedPin?.wfId === wf.id && selectedPin?.badgeId === b.id;
+            const pinLen = b.pinNumber.length;
+            const fontSize = pinLen > 4 ? 7 : pinLen > 3 ? 8 : pinLen > 2 ? 9 : 10;
 
-            if (b.w !== undefined && b.h !== undefined) {
-              // 바운딩 박스 핫스팟 — 이미지 내 영역 표시 위에 오버레이
-              return (
-                <div
-                  key={b.id}
-                  style={{
-                    left: `${b.x}%`, top: `${b.y}%`,
-                    width: `${b.w}%`, height: `${b.h}%`,
-                    backgroundColor: isActive ? color + "20" : isHovered ? color + "10" : "transparent",
-                    boxShadow: isActive
-                      ? `inset 0 0 0 2px ${color}, 0 0 0 2px ${color}40`
-                      : isHovered
-                      ? `inset 0 0 0 1.5px ${color}80`
-                      : undefined,
-                    zIndex: isActive ? 20 : isHovered ? 15 : 10,
-                  }}
-                  onClick={e => { e.stopPropagation(); onBadgeClick?.(b.pinNumber); }}
-                  onMouseEnter={() => onBadgeHover?.(b.pinNumber)}
-                  onMouseLeave={() => onBadgeHover?.(null)}
-                  className="absolute cursor-pointer transition-all duration-150 rounded-sm"
-                />
-              );
-            }
-
-            // 포인트 핫스팟 — 이미지 내 원형 배지 위에 오버레이 (투명, 링만 표시)
             return (
               <div
                 key={b.id}
-                onClick={e => { e.stopPropagation(); onBadgeClick?.(b.pinNumber); }}
+                className={[
+                  "absolute flex select-none items-center justify-center rounded-full font-bold text-white",
+                  isHoveredFromPanel ? "animate-pin-pulse" : "transition-transform duration-150",
+                  canEdit && !isHoveredFromPanel ? "cursor-grab active:cursor-grabbing" : "",
+                ].filter(Boolean).join(" ")}
+                style={{
+                  left: `${b.x}%`,
+                  top: `${b.y}%`,
+                  width: 28,
+                  height: 28,
+                  fontSize,
+                  lineHeight: "1",
+                  backgroundColor: color,
+                  transform: isHoveredFromPanel
+                    ? undefined  // animation handles transform
+                    : `translate(-50%, -50%)${isActive ? " scale(1.18)" : ""}`,
+                  zIndex: isActive || isSelected ? 50 : isHoveredFromPanel ? 40 : 30,
+                  boxShadow: isActive
+                    ? `0 0 0 3px white, 0 0 0 5px ${color}`
+                    : isSelected
+                    ? `0 0 0 2px white, 0 0 0 4px ${color}90`
+                    : `0 2px 5px rgba(0,0,0,0.35)`,
+                }}
                 onMouseEnter={() => onBadgeHover?.(b.pinNumber)}
                 onMouseLeave={() => onBadgeHover?.(null)}
-                style={{
-                  left: `${b.x}%`, top: `${b.y}%`,
-                  transform: "translate(-50%, -50%)",
-                  backgroundColor: "transparent",
-                  boxShadow: isActive
-                    ? `0 0 0 3px ${color}, 0 0 8px ${color}60`
-                    : isHovered
-                    ? `0 0 0 2px ${color}90`
-                    : undefined,
-                  zIndex: isActive ? 30 : isHovered ? 20 : 10,
+                onClick={e => {
+                  e.stopPropagation();
+                  setSelectedPin({ wfId: wf.id, badgeId: b.id });
+                  onBadgeClick?.(b.pinNumber);
                 }}
-                className="absolute h-9 w-9 rounded-full cursor-pointer transition-all duration-150"
-              />
+                onMouseDown={e => handlePinMouseDown(wf.id, b, e)}
+                onContextMenu={e => handlePinContextMenu(wf.id, b, e)}
+              >
+                {b.pinNumber}
+              </div>
             );
           })}
 
@@ -201,6 +301,13 @@ export function WireframeCanvas({
                   <button onClick={() => { setMenuOpen(false); updateWf(wf.id, { url: null, badges: [] }); setImgLoaded(false); }} className="px-3 py-2 text-left text-sm text-red-500 hover:bg-red-50">이미지 삭제</button>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Ctrl+Click 힌트 */}
+          {canEdit && imgLoaded && wf.badges.length === 0 && (
+            <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1 text-[10px] font-bold text-white opacity-0 transition-opacity group-hover:opacity-100 backdrop-blur-sm whitespace-nowrap">
+              Ctrl+클릭으로 핀 추가
             </div>
           )}
 

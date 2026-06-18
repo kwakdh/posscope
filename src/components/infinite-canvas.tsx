@@ -12,16 +12,22 @@ export function InfiniteCanvas({
   children,
   className,
   initialScale = 1,
+  toolMode,
+  onToolChange,
 }: {
   children: ReactNode;
   className?: string;
   initialScale?: number;
+  toolMode?: "hand" | "move";
+  onToolChange?: (t: "hand" | "move") => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [t, setT] = useState<Transform>({ x: 40, y: 32, scale: initialScale });
   const [isPanning, setIsPanning] = useState(false);
   const [spaceDown, setSpaceDown] = useState(false);
   const panStart = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
+
+  const effectiveHandMode = toolMode === "hand" || spaceDown;
 
   // Ctrl + Wheel → zoom toward cursor
   useEffect(() => {
@@ -44,27 +50,33 @@ export function InfiniteCanvas({
     return () => el.removeEventListener("wheel", handler);
   }, []);
 
-  // Space key → pan mode
+  // Space → temporary hand; H / V keys → persistent tool switch
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (e.code !== "Space" || e.repeat) return;
       const tgt = e.target as HTMLElement;
-      if (tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA" || tgt.isContentEditable) return;
-      e.preventDefault();
-      setSpaceDown(true);
+      const isEditing = tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA" || tgt.isContentEditable;
+      if (e.code === "Space" && !e.repeat) {
+        if (isEditing) return;
+        e.preventDefault();
+        setSpaceDown(true);
+        return;
+      }
+      if (isEditing) return;
+      if (e.code === "KeyH") onToolChange?.("hand");
+      if (e.code === "KeyV") onToolChange?.("move");
     };
     const up = (e: KeyboardEvent) => { if (e.code === "Space") setSpaceDown(false); };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
-  }, []);
+  }, [onToolChange]);
 
   const onMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button !== 1 && !(e.button === 0 && spaceDown)) return;
+    if (e.button !== 1 && !(e.button === 0 && effectiveHandMode)) return;
     e.preventDefault();
     setIsPanning(true);
     panStart.current = { x: e.clientX, y: e.clientY, tx: t.x, ty: t.y };
-  }, [spaceDown, t.x, t.y]);
+  }, [effectiveHandMode, t.x, t.y]);
 
   useEffect(() => {
     if (!isPanning) return;
@@ -90,7 +102,7 @@ export function InfiniteCanvas({
       className={`relative overflow-hidden ${className ?? ""}`}
       style={{
         background: "#f0f0f0",
-        cursor: spaceDown ? (isPanning ? "grabbing" : "grab") : "default",
+        cursor: effectiveHandMode ? (isPanning ? "grabbing" : "grab") : "default",
       }}
       onMouseDown={onMouseDown}
     >
@@ -107,7 +119,7 @@ export function InfiniteCanvas({
         />
       )}
 
-      {/* Transformed canvas */}
+      {/* Transformed canvas — pointer-events disabled in hand mode so children don't intercept pan */}
       <div
         style={{
           position: "absolute",
@@ -118,12 +130,13 @@ export function InfiniteCanvas({
           willChange: "transform",
           backfaceVisibility: "hidden",
           WebkitBackfaceVisibility: "hidden",
+          pointerEvents: effectiveHandMode ? "none" : undefined,
         }}
       >
         {children}
       </div>
 
-      {/* Zoom HUD */}
+      {/* Zoom + Tool HUD */}
       <div className="pointer-events-auto absolute bottom-3 right-3 flex items-center gap-1 rounded-xl bg-white/90 px-3 py-1.5 text-xs shadow-sm backdrop-blur-sm select-none">
         <button
           type="button"
@@ -143,12 +156,23 @@ export function InfiniteCanvas({
           onClick={() => setT({ x: 40, y: 32, scale: 1 })}
           title="초기화 (100%)"
         >↺</button>
+        {onToolChange && (
+          <>
+            <span className="mx-0.5 text-zinc-200">|</span>
+            <button
+              type="button"
+              title={toolMode === "hand" ? "이동 모드로 전환 (V)" : "패닝 모드로 전환 (H)"}
+              onClick={() => onToolChange(toolMode === "hand" ? "move" : "hand")}
+              className={`w-5 text-center font-bold transition-colors ${toolMode === "hand" ? "text-brand" : "text-zinc-400 hover:text-zinc-700"}`}
+            >{toolMode === "hand" ? "H" : "V"}</button>
+          </>
+        )}
       </div>
 
-      {/* Pan hint */}
-      {spaceDown && (
+      {/* Mode hint */}
+      {effectiveHandMode && (
         <div className="pointer-events-none absolute left-3 top-3 rounded-lg bg-black/60 px-2 py-1 text-xs font-bold text-white backdrop-blur-sm">
-          Space + 드래그로 이동
+          {toolMode === "hand" && !spaceDown ? "H — 패닝 모드 · V로 이동 모드 전환" : "Space + 드래그로 이동"}
         </div>
       )}
     </div>
