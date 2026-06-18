@@ -282,7 +282,6 @@ function classifyNode(node: FigmaNode): NodeClass {
   if (isLandscape || (!isPortrait && box.width >= 300)) {
     const texts = allTextNodes(node).map(n => (n.characters ?? "").trim()).filter(Boolean);
     if (texts.some(t => /descriptions?\s*\/\s*policies?/i.test(t))) return "description";
-    if (texts.some(t => /^no\.?$/i.test(t)))                         return "description";
     if (texts.some(t => /^고려사항$|^참고사항$/i.test(t)))           return "consideration";
     if (texts.some(t => /^정책$/i.test(t)))                          return "policy";
     if (texts.some(t => /^UI\s*참고사항$/i.test(t)))                 return "uiNote";
@@ -347,9 +346,6 @@ function classifyChildren(root: FigmaNode): Classified {
   if (result.wireframes.length === 0 && root.absoluteBoundingBox) {
     result.wireframes.push(root);
   }
-
-  const circled = result.wireframes.filter(w => /[①②③④⑤⑥⑦⑧⑨⑩]/.test(w.name));
-  if (circled.length > 0) result.wireframes = circled;
 
   result.wireframes.sort((a, b) => (a.absoluteBoundingBox?.x ?? 0) - (b.absoluteBoundingBox?.x ?? 0));
   return result;
