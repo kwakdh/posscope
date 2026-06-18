@@ -824,6 +824,9 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
                   } else {
                     finalUrl = `${sec.imageUrl}?v=${Date.now()}`;
                   }
+                } else {
+                  // HTTP 오류(403/404 등) — S3 URL을 img src로 직접 사용
+                  finalUrl = `${sec.imageUrl}?v=${Date.now()}`;
                 }
               } catch {
                 // CORS 또는 네트워크 오류 시 Figma URL 그대로 사용 (즉시 표시 가능)
