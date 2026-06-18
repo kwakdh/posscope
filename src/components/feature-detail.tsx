@@ -551,6 +551,7 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
   const [enhanceMode, setEnhanceMode] = useState(false);
   const [enhanceSourceName, setEnhanceSourceName] = useState<string | null>(null);
   const aiFileRef = useRef<HTMLInputElement>(null);
+  const emptyUploadRef = useRef<HTMLInputElement>(null);
 
   // ── isDirty 추적 ─────────────────────────────────────────────────────────
   const cleanSnap = useRef(JSON.stringify({
@@ -884,6 +885,14 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
     reader.readAsDataURL(file);
   }
 
+  // ── Empty State 이미지 업로드 ──────────────────────────────────────
+  function handleEmptyUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    handleUpload(crypto.randomUUID(), file);
+  }
+
   // ── AI 생성 / 고도화 ─────────────────────────────────────────────────
   async function handleAIGenerate() {
     if (!aiPrompt.trim()) return;
@@ -1076,8 +1085,8 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
           </div>
         )}
 
-        {/* ── 피그마 임포트 단건 UI (canvas 모드 공통) ── */}
-        {mode === "canvas" && canEdit && (
+        {/* ── 피그마 재불러오기 바 (canvas 모드, 와이어프레임 있을 때만) ── */}
+        {mode === "canvas" && canEdit && wireframes.filter(w => !w.isModal).length > 0 && (
           <div className="border-b border-zinc-100 px-3 py-2">
             {figmaImporting ? (
               <ProgressBar progress={figmaProgress} label={figmaProgress < 40 ? "피그마 레이어 분석 중..." : figmaProgress < 80 ? "텍스트/표 데이터 매핑 중..." : figmaProgress < 100 ? "와이어프레임 이미지 로딩 중..." : "완료!"} />
@@ -1096,15 +1105,10 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
                 <button type="button" onClick={() => { setShowFigmaInput(false); setFigmaUrl(""); }}
                   className="rounded-lg px-2.5 py-1 text-xs font-bold text-zinc-400 hover:bg-zinc-100">취소</button>
               </div>
-            ) : wireframes.filter(w => !w.isModal).length > 0 ? (
+            ) : (
               <button type="button" onClick={() => setShowFigmaInput(true)}
                 className="flex items-center gap-1.5 text-[11px] font-bold text-zinc-400 hover:text-brand">
                 <FigmaLogo />피그마 다시 불러오기
-              </button>
-            ) : (
-              <button type="button" onClick={() => setShowFigmaInput(true)}
-                className="flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-zinc-200 py-2 text-xs font-bold text-zinc-400 hover:border-brand/40 hover:text-brand">
-                <FigmaLogo />피그마 URL로 가져오기
               </button>
             )}
           </div>
@@ -1113,87 +1117,134 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
         {/* ── 본문 레이아웃: [무한 캔버스] | [드래그 핸들] | [우측 패널] ── */}
         <div className="flex h-[calc(100vh-80px)] min-h-[600px]">
 
-          {/* 무한 캔버스 영역 */}
-          <InfiniteCanvas key={mode} className="flex-1 min-w-0" initialScale={mode === "ai" ? 1 : 0.5} fitTrigger={fitTrigger}>
-            {/* AI 모드 */}
-            {mode === "ai" && (
-              <div className="flex gap-6">
-                {aiScreens.length > 0 ? (
-                  aiScreens.map((s, i) => (
-                    <div key={s.id} className="flex flex-col gap-2" style={{ width: 390 }}>
-                      <div className="flex items-center gap-2 px-1">
-                        <button type="button" onClick={() => setActiveAiScreen(i)}
-                          className={`rounded-full px-3 py-1 text-xs font-bold transition-colors ${activeAiScreen === i ? "bg-brand text-white" : "bg-white text-zinc-500 hover:bg-brand/10 hover:text-brand"}`}>
-                          {s.name}
-                        </button>
-                        {s.flowTo.length > 0 && s.flowTo.map(toId => {
-                          const target = aiScreens.find(x => x.id === toId);
-                          return target ? (
-                            <button key={toId} type="button" onClick={() => setActiveAiScreen(aiScreens.findIndex(x => x.id === toId))}
-                              className="text-xs text-zinc-400 hover:text-brand">→ {target.name}</button>
-                          ) : null;
-                        })}
+          {/* 무한 캔버스 래퍼 (empty state overlay 포함) */}
+          <div className="relative flex-1 min-w-0">
+            <InfiniteCanvas key={mode} className="absolute inset-0" initialScale={1} fitTrigger={fitTrigger}>
+              {/* AI 모드 */}
+              {mode === "ai" && (
+                <div className="flex gap-6">
+                  {aiScreens.length > 0 ? (
+                    aiScreens.map((s, i) => (
+                      <div key={s.id} className="flex flex-col gap-2" style={{ width: 390 }}>
+                        <div className="flex items-center gap-2 px-1">
+                          <button type="button" onClick={() => setActiveAiScreen(i)}
+                            className={`rounded-full px-3 py-1 text-xs font-bold transition-colors ${activeAiScreen === i ? "bg-brand text-white" : "bg-white text-zinc-500 hover:bg-brand/10 hover:text-brand"}`}>
+                            {s.name}
+                          </button>
+                          {s.flowTo.length > 0 && s.flowTo.map(toId => {
+                            const target = aiScreens.find(x => x.id === toId);
+                            return target ? (
+                              <button key={toId} type="button" onClick={() => setActiveAiScreen(aiScreens.findIndex(x => x.id === toId))}
+                                className="text-xs text-zinc-400 hover:text-brand">→ {target.name}</button>
+                            ) : null;
+                          })}
+                        </div>
+                        <iframe
+                          srcDoc={s.html}
+                          sandbox="allow-scripts allow-same-origin"
+                          className={`w-full rounded-2xl border-2 transition-all ${activeAiScreen === i ? "border-brand shadow-lg shadow-brand/20" : "border-zinc-200"}`}
+                          style={{ height: 480 }}
+                          title={s.name}
+                        />
                       </div>
-                      <iframe
-                        srcDoc={s.html}
-                        sandbox="allow-scripts allow-same-origin"
-                        className={`w-full rounded-2xl border-2 transition-all ${activeAiScreen === i ? "border-brand shadow-lg shadow-brand/20" : "border-zinc-200"}`}
-                        style={{ height: 480 }}
-                        title={s.name}
-                      />
+                    ))
+                  ) : (
+                    <div className="flex h-[480px] w-[390px] flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-zinc-300 bg-white text-zinc-400">
+                      <span className="text-5xl">✨</span>
+                      <span className="text-sm font-medium">위에서 기획 내용을 입력하고 생성하세요</span>
+                      {canEdit && <span className="text-xs opacity-60">현행 화면 이미지 첨부 시 더욱 정확</span>}
                     </div>
-                  ))
+                  )}
+                </div>
+              )}
+
+              {/* canvas 모드 — 와이어프레임이 있을 때만 렌더링 */}
+              {mode === "canvas" && wireframes.length > 0 && (
+                <WireframeCanvas
+                  wireframes={wireframes} flowSteps={flowSteps}
+                  onWireframesChange={handleWfsChange} onFlowStepsChange={handleFlowChange}
+                  onUpload={handleUpload}
+                  activePinNumber={activePinNumber}
+                  hoveredPinNumber={hoveredPinNumber}
+                  onBadgeHover={setHoveredPinNumber}
+                  onBadgeClick={handleBadgeClick}
+                  onBadgeCreate={canEdit ? (pin) => {
+                    setDescGroups(prev => {
+                      if (prev.some(g => g.pinNumber === pin)) return prev;
+                      const next = [...prev, { id: crypto.randomUUID(), pinNumber: pin, title: "", subItems: [] }];
+                      return next.sort((a, b) => (parseInt(a.pinNumber, 10) || 0) - (parseInt(b.pinNumber, 10) || 0));
+                    });
+                  } : undefined}
+                  onAIEnhance={canEdit ? handleAIEnhance : undefined}
+                  canEdit={canEdit}
+                />
+              )}
+            </InfiniteCanvas>
+
+            {/* ── Canvas Empty State 오버레이 (시안 없을 때 캔버스 중앙 카드) ── */}
+            {mode === "canvas" && wireframes.length === 0 && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                {figmaImporting ? (
+                  <div className="pointer-events-auto w-full max-w-md px-6">
+                    <ProgressBar progress={figmaProgress} label={figmaProgress < 40 ? "피그마 레이어 분석 중..." : figmaProgress < 80 ? "텍스트/표 데이터 매핑 중..." : figmaProgress < 100 ? "와이어프레임 이미지 로딩 중..." : "완료!"} />
+                  </div>
+                ) : showFigmaInput ? (
+                  <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white border-2 border-dashed border-zinc-300 p-8 shadow-lg">
+                    <div className="mb-4 flex items-center gap-2">
+                      <FigmaLogo />
+                      <span className="text-sm font-bold text-zinc-700">피그마에서 가져오기</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <input type="url" value={figmaUrl} autoFocus
+                        onChange={e => setFigmaUrl(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") handleFigmaImport(); if (e.key === "Escape") { setShowFigmaInput(false); setFigmaUrl(""); } }}
+                        placeholder="https://www.figma.com/design/..."
+                        className="flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand/40 focus:ring-2 focus:ring-brand/20" />
+                      <button type="button" onClick={handleFigmaImport} disabled={uploading}
+                        className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white hover:bg-brand/90 disabled:opacity-50">
+                        가져오기
+                      </button>
+                    </div>
+                    <button type="button" onClick={() => { setShowFigmaInput(false); setFigmaUrl(""); }}
+                      className="mt-3 text-xs font-medium text-zinc-400 hover:text-zinc-600">
+                      ← 취소
+                    </button>
+                  </div>
                 ) : (
-                  <div className="flex h-[480px] w-[390px] flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-zinc-300 bg-white text-zinc-400">
-                    <span className="text-5xl">✨</span>
-                    <span className="text-sm font-medium">위에서 기획 내용을 입력하고 생성하세요</span>
-                    {canEdit && <span className="text-xs opacity-60">현행 화면 이미지 첨부 시 더욱 정확</span>}
+                  <div className="pointer-events-auto max-w-md w-full p-8 bg-white rounded-2xl border-2 border-dashed border-zinc-300 shadow-lg text-center">
+                    <div className="mb-5 flex justify-center">
+                      <span className="text-5xl leading-none">🖼️</span>
+                    </div>
+                    <h3 className="mb-2 text-base font-semibold text-zinc-700">시안이 없습니다</h3>
+                    <p className="mb-6 text-sm text-zinc-400">이미지를 업로드하거나 피그마에서 가져오세요</p>
+                    {canEdit && (
+                      <div className="flex flex-col gap-3">
+                        <button
+                          type="button"
+                          onClick={() => emptyUploadRef.current?.click()}
+                          className="flex items-center justify-center gap-2 rounded-lg bg-zinc-100 px-4 py-2.5 text-sm font-semibold text-zinc-600 shadow-sm transition-all hover:bg-zinc-200 hover:text-zinc-900"
+                        >
+                          🖼️ 이미지 업로드
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowFigmaInput(true)}
+                          className="flex items-center justify-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand/90"
+                        >
+                          🔗 피그마 URL로 가져오기
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             )}
 
-            {/* canvas 모드 (이미지/피그마 통합) */}
-            {mode === "canvas" && (
-              <>
-                {wireframes.length === 0 && (
-                  <div
-                    onClick={canEdit ? () => {
-                      const id = crypto.randomUUID();
-                      setWireframes([{ id, url: null, name: title || "화면", badges: [], isModal: false, modalFor: null, order: 0 }]);
-                    } : undefined}
-                    className={`flex h-full w-[420px] flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed border-zinc-300 bg-white text-zinc-400 ${canEdit ? "cursor-pointer hover:border-brand/40 hover:bg-brand/5" : ""}`}
-                  >
-                    <span className="text-6xl">🖼️</span>
-                    <div className="flex flex-col items-center gap-1.5">
-                      <span className="text-base font-medium">시안이 없습니다</span>
-                      {canEdit && <span className="text-sm opacity-60">이미지를 업로드하거나 피그마에서 가져오세요</span>}
-                    </div>
-                  </div>
-                )}
-                {wireframes.length > 0 && (
-                  <WireframeCanvas
-                    wireframes={wireframes} flowSteps={flowSteps}
-                    onWireframesChange={handleWfsChange} onFlowStepsChange={handleFlowChange}
-                    onUpload={handleUpload}
-                    activePinNumber={activePinNumber}
-                    hoveredPinNumber={hoveredPinNumber}
-                    onBadgeHover={setHoveredPinNumber}
-                    onBadgeClick={handleBadgeClick}
-                    onBadgeCreate={canEdit ? (pin) => {
-                      setDescGroups(prev => {
-                        if (prev.some(g => g.pinNumber === pin)) return prev;
-                        const next = [...prev, { id: crypto.randomUUID(), pinNumber: pin, title: "", subItems: [] }];
-                        return next.sort((a, b) => (parseInt(a.pinNumber, 10) || 0) - (parseInt(b.pinNumber, 10) || 0));
-                      });
-                    } : undefined}
-                    onAIEnhance={canEdit ? handleAIEnhance : undefined}
-                    canEdit={canEdit}
-                  />
-                )}
-              </>
+            {/* hidden file input for empty state upload */}
+            {canEdit && (
+              <input ref={emptyUploadRef} type="file" accept="image/*" className="hidden" onChange={handleEmptyUpload} />
             )}
-          </InfiniteCanvas>
+          </div>
 
           {/* 리사이즈 드래그 핸들 */}
           <div
