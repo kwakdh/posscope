@@ -1,0 +1,24 @@
+# Memory Index
+
+- [Figma 기획서 — 번호 callout 자동 추가](feedback_figma_spec_numbered_callouts.md) — 디스크립션 추가 시 캡쳐본에도 해당 번호 배지 함께 삽입
+- [사용자 프로필 — 곽다희](user_profile.md) — 서비스 기획자, KCP POS 앱 및 파트너(백오피스) 담당
+- [나의 이름 — 클다주](user_claude_name.md) — 클로드코드 다희 주니어의 줄임말, 곽다희가 지어준 별명
+- [프로젝트 — KCP POS 서비스 구조](project_kcp_pos.md) — POS+/POS pro 2종, 백오피스=파트너, 사용자 타입 4종
+- [기획서 포맷 — 앱푸쉬 기획서 디자인 표준](feedback_spec_format.md) — 기획서 요청 시 동일 Apple 스타일 포맷으로 제작
+- [기획서 캡처 — 풀페이지 스크롤 캡처](feedback_spec_screenshot_fullpage.md) — 스크롤 있는 화면은 반드시 전체 내용 포함해서 캡처
+- [기획서 내용 — 파트너 앱푸쉬 관리 기능](project_apppush_spec.md) — SCREEN 01/02/03 전체 정책·디스크립션, v0.1: 전체/가맹점/비가맹점·페이지네이션·100개 제한
+- [파트너 어드민 메뉴 구조](project_partner_menu.md) — 좌측 내비 11개 항목, 운영 관리 하위 3개(버전/앱푸쉬/광고)
+- [KCP POS+ 제품 소개서](project_kcp_pos_product.md) — 특장점·주요기능·연동단말기·추천업종 전체 (소개서 기반)
+- [KCP POS 앱 구조](project_pos_app_structure.md) — 상단탭 4개, 마이페이지 하위 메뉴, 피그마 페이지 매핑(APP_/WV_/WIN_ 접두어)
+- [베리포스 정보](project_berrypos.md) — KCP POS 세로형 버전, 기능 60~70%, 포스앱 기획 시 함께 기획 필요
+- [키오스크 기능 기획서](project_kiosk_spec.md) — 포스앱 키오스크 전환 후 기능 전체 (상품예외처리/출력설정/영수증/장비연동 등)
+- [결제 프로세스 플로우차트](project_payment_flow_spec.md) — 카드/현금/간편/분할결제 4종 분기, 실패팝업·조건 전체
+- [다국어 기능 기획서](project_multilingual_spec.md) — 키오스크 다국어 설정, 파트너PTN_001~005·언어설정·이력·언어선택Btn 전체 정책
+- [POS 앱 APK 분석](project_pos_apk_analysis.md) — v2.17.4, Flutter, 연동단말기 스펙 전체, 기능목록, 배달플랫폼 연동
+- [POSSCOPE 프로젝트](project_posscope.md) — KCP POS 기획서 통합관리 웹앱(Next.js+Supabase), Desktop\클로드\ 폴더
+- [POSSCOPE git 루틴](feedback_posscope_git_routine.md) — 업무종료 시 자동 git push, 업무시작 시 git pull 여부 확인
+- [POSSCOPE 브랜드 스타일](feedback_posscope_brand_style.md) — 버튼은 항상 #2196F3(bg-brand) 사용, 로고는 블롭+망원경+크로스헤어 컨셉
+- [POSSCOPE UI/UX 방향성](feedback_posscope_uiux_apple_style.md) — 전반적으로 토스(Toss) 스타일의 미니멀한 디자인 지향(구 애플 스타일 대체), 모든 작업에 적용, 브랜드컬러 #2196F3 유지
+- [POSSCOPE 기획 환경 로드맵](project_posscope_planning_flow.md) — 캡쳐붙여넣기(완료)/클로드 기획서 자동작성/두레이 일감등록(보류) 진행상태
+- [기획서 버전 표기 규칙](feedback_policy_version_label.md) — 현행=v1.0, 신규 기획=v0.1 고정 라벨 + 작성자명·날짜 표기
+- [코드 수정 범위 원칙](feedback_code_change_scope.md) — 요청된 부분만 수정, 기존 기능 삭제·변경 절대 금지
