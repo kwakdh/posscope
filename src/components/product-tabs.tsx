@@ -60,6 +60,17 @@ const CATEGORY_LABEL_OVERRIDES: Record<string, string> = {
 
 const HOME_ITEM: SidebarItem = { id: "home", name: "첫화면", status: null, itemType: "home" };
 
+// 슬러그 → 결정론적 UUID 변환 (PostgreSQL uuid 타입 호환)
+// namespace prefix: 686f6d65-686f-4d65 ("home" ASCII hex)
+function homeItemUUID(slug: string): string {
+  const hex = Array.from(slug)
+    .map(c => c.charCodeAt(0).toString(16).padStart(2, "0"))
+    .join("")
+    .padEnd(12, "0")
+    .slice(0, 12);
+  return `686f6d65-686f-4d65-8000-${hex}`;
+}
+
 function buildSidebarItems(categories: Category[]): SidebarItem[] {
   return [
     HOME_ITEM,
@@ -235,7 +246,7 @@ export function ProductTabs({ products, currentUserName, canEdit }: ProductTabsP
                   <FeatureDetail
                     key={selected.id}
                     itemType={selected.itemType === "home" ? "category" : selected.itemType}
-                    itemId={selected.itemType === "home" ? `home_${activeSlug}` : selected.id}
+                    itemId={selected.itemType === "home" ? homeItemUUID(activeSlug) : selected.id}
                     currentUserName={currentUserName}
                     canEdit={canEdit}
                   />
