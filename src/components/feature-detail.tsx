@@ -1183,13 +1183,13 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
 
             {/* ── Canvas Empty State 오버레이 (시안 없을 때 캔버스 중앙 카드) ── */}
             {mode === "canvas" && wireframes.length === 0 && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <div className="absolute inset-0 z-10 flex items-center justify-center">
                 {figmaImporting ? (
-                  <div className="pointer-events-auto w-full max-w-md px-6">
+                  <div className="w-full max-w-md px-6">
                     <ProgressBar progress={figmaProgress} label={figmaProgress < 40 ? "피그마 레이어 분석 중..." : figmaProgress < 80 ? "텍스트/표 데이터 매핑 중..." : figmaProgress < 100 ? "와이어프레임 이미지 로딩 중..." : "완료!"} />
                   </div>
                 ) : showFigmaInput ? (
-                  <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white border-2 border-dashed border-zinc-300 p-8 shadow-lg">
+                  <div className="w-full max-w-md rounded-2xl bg-white border-2 border-dashed border-zinc-300 p-8 shadow-lg">
                     <div className="mb-4 flex items-center gap-2">
                       <FigmaLogo />
                       <span className="text-sm font-bold text-zinc-700">피그마에서 가져오기</span>
@@ -1200,8 +1200,8 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
                         onKeyDown={e => { if (e.key === "Enter") handleFigmaImport(); if (e.key === "Escape") { setShowFigmaInput(false); setFigmaUrl(""); } }}
                         placeholder="https://www.figma.com/design/..."
                         className="flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand/40 focus:ring-2 focus:ring-brand/20" />
-                      <button type="button" onClick={handleFigmaImport} disabled={uploading}
-                        className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white hover:bg-brand/90 disabled:opacity-50">
+                      <button type="button" onClick={handleFigmaImport}
+                        className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white hover:bg-brand/90">
                         가져오기
                       </button>
                     </div>
@@ -1211,7 +1211,7 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
                     </button>
                   </div>
                 ) : (
-                  <div className="pointer-events-auto max-w-md w-full p-8 bg-white rounded-2xl border-2 border-dashed border-zinc-300 shadow-lg text-center">
+                  <div className="max-w-md w-full p-8 bg-white rounded-2xl border-2 border-dashed border-zinc-300 shadow-lg text-center">
                     <div className="mb-5 flex justify-center">
                       <span className="text-5xl leading-none">🖼️</span>
                     </div>
