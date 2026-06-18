@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
 
+export const maxDuration = 60;
+
 const FIGMA_TOKEN = process.env.FIGMA_ACCESS_TOKEN;
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
@@ -639,47 +641,77 @@ export async function POST(req: NextRequest) {
   const nodeIdToIdx = new Map<string, number>(allWfs.map((wf, i) => [wf.id, i]));
   let exportError: string | null = null;
 
+  // Supabase 어드민 클라이언트를 격리된 try/catch로 초기화
+  // → 환경변수 미설정이나 초기화 실패가 이미지 파이프라인 전체를 중단시키지 않도록 분리
+  let sb: ReturnType<typeof createAdminClient> | null = null;
+  try {
+    sb = createAdminClient();
+  } catch (sbErr) {
+    exportError = `Supabase admin init: ${sbErr}`;
+  }
+
   if (allWfs.length > 0) {
     try {
-      const exportIds = allWfs.map(w => encodeURIComponent(w.id)).join(",");
+      // node ID는 `:` 원본 포맷 그대로 사용 — encodeURIComponent 금지
+      // (encode 시 응답 키가 `123:456`인데 lookup이 `123%3A456`으로 달라져 매칭 실패)
+      const exportIds = allWfs.map(w => w.id).join(",");
       const exportRes = await fetch(
         `https://api.figma.com/v1/images/${fileKey}?ids=${exportIds}&format=png&scale=1`,
-        { headers: { "X-Figma-Token": FIGMA_TOKEN }, signal: AbortSignal.timeout(7000) }
+        { headers: { "X-Figma-Token": FIGMA_TOKEN }, signal: AbortSignal.timeout(12000) }
       );
 
-      if (exportRes.ok) {
+      if (!exportRes.ok) {
+        const errBody = await exportRes.json().catch(() => ({}));
+        exportError = (exportError ? `${exportError}; ` : "") + `Figma images API ${exportRes.status}: ${JSON.stringify(errBody)}`;
+      } else {
         const exportData = await exportRes.json();
-        const imageUrls = exportData.images as Record<string, string | null>;
-        const sb = createAdminClient();
+        const imageUrls = (exportData.images ?? {}) as Record<string, string | null>;
 
         await Promise.all(allWfs.map(async (wf, i) => {
           const dashId = wf.id.replace(/:/g, "-");
-          const imgUrl = imageUrls[wf.id] ?? imageUrls[dashId] ?? null;
-          if (!imgUrl) return;
+          // `:` 포맷, `-` 포맷 순으로 응답 키 매칭 시도
+          const figmaImgUrl = imageUrls[wf.id] ?? imageUrls[dashId] ?? null;
+          if (!figmaImgUrl) return;
+
+          // ── 1단계: Figma S3 이미지 다운로드 ─────────────────────────────
+          let imgBuf: ArrayBuffer | null = null;
+          let mimeType = "image/png";
           try {
-            const imgRes = await fetch(imgUrl, { signal: AbortSignal.timeout(7000) });
-            if (!imgRes.ok) return;
-            const buf = await imgRes.arrayBuffer();
-            const mimeType = imgRes.headers.get("content-type") ?? "image/png";
-            const ext = mimeType.split("/")[1]?.split(";")[0] ?? "png";
-            const storagePath = `figma/${fileKey}/${dashId}-${Date.now()}.${ext}`;
-            const { error: upErr } = await sb.storage
-              .from("wireframes")
-              .upload(storagePath, Buffer.from(buf), { contentType: mimeType, upsert: true });
-            if (upErr) {
-              sections[i] = { ...sections[i], imageBase64: Buffer.from(buf).toString("base64"), imageMimeType: mimeType };
-            } else {
-              const { data: urlData } = sb.storage.from("wireframes").getPublicUrl(storagePath);
-              sections[i] = { ...sections[i], imageUrl: urlData.publicUrl, imageMimeType: mimeType };
+            const imgRes = await fetch(figmaImgUrl, { signal: AbortSignal.timeout(10000) });
+            if (imgRes.ok) {
+              imgBuf = await imgRes.arrayBuffer();
+              mimeType = imgRes.headers.get("content-type") ?? "image/png";
             }
-          } catch { /* 개별 이미지 실패 시 스킵 */ }
+          } catch { /* 다운로드 타임아웃 또는 네트워크 오류 */ }
+
+          if (!imgBuf) {
+            // 다운로드 실패 → Figma S3 URL 직접 반환 (클라이언트가 <img>로 즉시 표시 가능)
+            sections[i] = { ...sections[i], imageUrl: figmaImgUrl };
+            return;
+          }
+
+          // ── 2단계: Supabase Storage 업로드 시도 ──────────────────────────
+          if (sb) {
+            try {
+              const ext = mimeType.split("/")[1]?.split(";")[0] ?? "png";
+              const storagePath = `figma/${fileKey}/${dashId}-${Date.now()}.${ext}`;
+              const { error: upErr } = await sb.storage
+                .from("wireframes")
+                .upload(storagePath, Buffer.from(imgBuf), { contentType: mimeType, upsert: true });
+              if (!upErr) {
+                const { data: urlData } = sb.storage.from("wireframes").getPublicUrl(storagePath);
+                sections[i] = { ...sections[i], imageUrl: urlData.publicUrl, imageMimeType: mimeType };
+                return;
+              }
+            } catch { /* Supabase 업로드 예외 → base64 폴백으로 계속 */ }
+          }
+
+          // ── 3단계: base64 폴백 (클라이언트가 anon 키로 Supabase 업로드) ──
+          sections[i] = { ...sections[i], imageBase64: Buffer.from(imgBuf).toString("base64"), imageMimeType: mimeType };
         }));
-      } else {
-        const errBody = await exportRes.json().catch(() => ({}));
-        exportError = `Figma export ${exportRes.status}: ${JSON.stringify(errBody)}`;
       }
     } catch (e) {
-      exportError = String(e);
+      exportError = (exportError ? `${exportError}; ` : "") + String(e);
     }
   }
 
@@ -717,10 +749,14 @@ export async function POST(req: NextRequest) {
       figmaSectionsCount: figmaSectionsResult.length,
       wireframesFound:    allWfs.length,
       wireframeNames:     allWfs.map(w => `${w.name} (${w.absoluteBoundingBox?.width}x${w.absoluteBoundingBox?.height})`),
+      wireframeIds:       allWfs.map(w => w.id),
       descCount:          descNodes.length,
       policyCount:        policyNodes.length,
       considerCount:      considerNodes.length,
       exportError,
+      imageUrlCount:      sections.filter(s => s.imageUrl).length,
+      imageBase64Count:   sections.filter(s => s.imageBase64).length,
+      imageNullCount:     sections.filter(s => !s.imageUrl && !s.imageBase64).length,
     },
   });
 }

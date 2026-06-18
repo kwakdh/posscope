@@ -300,9 +300,29 @@ export function FeatureDetail({
       const sb = createClient();
       const created: Policy[] = [];
 
-      // 이미지 URL 해석 (서버 업로드 URL 우선, fallback base64 클라이언트 업로드)
+      // 이미지 URL 해석 (서버 Supabase URL > 클라이언트 재업로드 > base64 > null)
+      const supabaseOrigin = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
       async function resolveImageUrl(wf: ParsedWf, policyId: string, order: number): Promise<string | null> {
-        if (wf.imageUrl) return `${wf.imageUrl}?v=${Date.now()}`;
+        if (wf.imageUrl) {
+          if (wf.imageUrl.startsWith(supabaseOrigin)) {
+            return `${wf.imageUrl}?v=${Date.now()}`;
+          }
+          // Figma S3 임시 URL → 클라이언트 재업로드 시도
+          try {
+            const resp = await fetch(wf.imageUrl);
+            if (resp.ok) {
+              const blob = await resp.blob();
+              const ext = (blob.type.split("/")[1] ?? "png").split(";")[0];
+              const path = `${itemType}/${itemId}/${policyId}-${order}.${ext}`;
+              const { error: upErr } = await sb.storage.from("wireframes").upload(path, blob, { contentType: blob.type, upsert: true });
+              if (!upErr) {
+                const { data: urlData } = sb.storage.from("wireframes").getPublicUrl(path);
+                return `${urlData.publicUrl}?v=${Date.now()}`;
+              }
+            }
+          } catch { /* CORS 또는 네트워크 오류 */ }
+          return `${wf.imageUrl}?v=${Date.now()}`;
+        }
         if (wf.imageBase64) {
           try {
             const bytes = Uint8Array.from(atob(wf.imageBase64), c => c.charCodeAt(0));
@@ -778,12 +798,41 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
       const sections = (Array.isArray(parsedSections) ? parsedSections : []) as RawSection[];
       const sb = createClient();
 
+      const supabaseOrigin = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+
       const nextWfs: WireframeItem[] = await Promise.all(
         sections.map(async (sec, i) => {
           const wfId = crypto.randomUUID();
-          let finalUrl: string | null = sec.imageUrl ? `${sec.imageUrl}?v=${Date.now()}` : null;
+          let finalUrl: string | null = null;
 
-          // base64 fallback → 클라이언트에서 Supabase 업로드
+          if (sec.imageUrl) {
+            if (sec.imageUrl.startsWith(supabaseOrigin)) {
+              // 서버가 이미 Supabase에 업로드한 영구 URL — 그대로 사용
+              finalUrl = `${sec.imageUrl}?v=${Date.now()}`;
+            } else {
+              // 서버가 반환한 Figma S3 임시 URL → 클라이언트에서 Supabase에 재업로드
+              try {
+                const resp = await fetch(sec.imageUrl);
+                if (resp.ok) {
+                  const blob = await resp.blob();
+                  const ext = (blob.type.split("/")[1] ?? "png").split(";")[0];
+                  const path = `${itemType}/${itemId}/${wfId}-figma.${ext}`;
+                  const { error: upErr } = await sb.storage.from("wireframes").upload(path, blob, { contentType: blob.type, upsert: true });
+                  if (!upErr) {
+                    const { data: urlData } = sb.storage.from("wireframes").getPublicUrl(path);
+                    finalUrl = `${urlData.publicUrl}?v=${Date.now()}`;
+                  } else {
+                    finalUrl = `${sec.imageUrl}?v=${Date.now()}`;
+                  }
+                }
+              } catch {
+                // CORS 또는 네트워크 오류 시 Figma URL 그대로 사용 (즉시 표시 가능)
+                finalUrl = `${sec.imageUrl}?v=${Date.now()}`;
+              }
+            }
+          }
+
+          // base64 폴백 → 클라이언트에서 Supabase 업로드
           if (!finalUrl && sec.imageBase64) {
             try {
               const ext = sec.imageMimeType?.split("/")[1] ?? "png";
