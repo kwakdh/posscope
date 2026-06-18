@@ -22,12 +22,15 @@ type Props = {
   hoveredPinNumber?: string | null;
   onBadgeHover?: (pin: string | null) => void;
   onBadgeClick?: (pin: string) => void;
+  onBadgeCreate?: (pin: string) => void;
+  onAIEnhance?: (wf: WireframeItem) => void;
   canEdit: boolean;
 };
 
 export function WireframeCanvas({
   wireframes, flowSteps, onWireframesChange, onFlowStepsChange,
-  onUpload, activePinNumber, hoveredPinNumber, onBadgeHover, onBadgeClick, canEdit,
+  onUpload, activePinNumber, hoveredPinNumber, onBadgeHover, onBadgeClick,
+  onBadgeCreate: _onBadgeCreate, onAIEnhance: _onAIEnhance, canEdit,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());

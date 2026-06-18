@@ -7,6 +7,7 @@ import { WireframeCanvas } from "@/components/wireframe-canvas";
 import { TableEditor } from "@/components/table-editor";
 import type { Policy, PolicyMode, WireframeItem, FlowStep, TableData, AIScreen, DescGroup } from "@/types/policy";
 import { normalizePolicy } from "@/types/policy";
+import { parseFigmaTree } from "@/utils/figmaParser";
 
 type ItemType = "category" | "feature";
 
@@ -265,15 +266,15 @@ export function FeatureDetail({
     setPolicies(prev => prev.filter(p => p.id !== id));
   }
 
-  // ── 피그마 탭 전체 일괄 불러오기 (초록 포스트잇 섹션 모드 + fallback) ────
+  // ── 피그마 탭 전체 일괄 불러오기 (클라이언트 파싱 + Vercel 타임아웃 우회) ──
   async function handleBulkImport(tab: { id: string; figma_url: string | null }) {
     if (!tab.figma_url) return;
     setBulkImporting(true); setBulkProgress(0); setBulkError(null);
-    setBulkLabel("피그마에 연결하는 중...");
+    setBulkLabel("피그마 노드 트리 수신 중...");
     try {
-      // ── Phase 1: 파싱 (0 → 50%) ──
+      // ── Phase 1: 서버 경량 Proxy → Raw 노드 JSON (0 → 20%) ──────────────
       const animInterval = setInterval(() => {
-        setBulkProgress(prev => prev < 45 ? prev + 2 : prev);
+        setBulkProgress(prev => prev < 18 ? prev + 2 : prev);
       }, 200);
 
       const res = await fetch("/api/figma-parse", {
@@ -287,108 +288,128 @@ export function FeatureDetail({
         setBulkImporting(false); return;
       }
 
-      const parsed = await res.json();
-      type ParsedWf = { name: string; imageUrl: string; imageBase64: string; imageMimeType: string; badges: WireframeItem["badges"]; isModal: boolean };
-      type ParsedFigmaSection = { sectionTitle: string; wireframes: ParsedWf[]; descriptionGroups: DescGroup[]; policyNote: string; uiNote: string; considerationNote: string };
-      const { figmaSections, sections, descriptionGroups: parsedGroups, descriptions, policyNote, uiNote, considerationNote } = parsed as {
-        figmaSections?: ParsedFigmaSection[];
-        sections: ParsedWf[];
-        descriptionGroups: DescGroup[]; descriptions: string[]; policyNote: string; uiNote: string; considerationNote: string;
-      };
+      const { rawNode, fileKey } = await res.json();
+      setBulkProgress(20);
 
+      // ── Phase 2: 클라이언트 파싱 (브라우저, 타임아웃 없음) (20 → 35%) ──
+      setBulkLabel("노드 트리 파싱 중...");
+      const parseResult = parseFigmaTree(rawNode);
+      setBulkProgress(35);
+
+      // ── Phase 3: 이미지 Export URL 수신 (35 → 50%) ──────────────────────
+      const allFrameIds = parseResult.hasSections
+        ? parseResult.sections.flatMap(s => s.wireframeFrames.map(w => w.nodeId))
+        : parseResult.wireframeFrames.map(w => w.nodeId);
+
+      let imageUrls: Record<string, string | null> = {};
+      if (allFrameIds.length > 0) {
+        setBulkLabel("이미지 URL 추출 중...");
+        const imgRes = await fetch("/api/figma-images", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileKey, nodeIds: allFrameIds }),
+        });
+        if (imgRes.ok) {
+          const imgData = await imgRes.json();
+          imageUrls = imgData.images ?? {};
+        }
+      }
       setBulkProgress(50);
+
+      // ── Phase 4: 이미지 다운로드 + Supabase 업로드 + DB 저장 ─────────────
       const sb = createClient();
       const created: Policy[] = [];
 
-      // 이미지 URL 해석 (서버 업로드 URL 우선, fallback base64 클라이언트 업로드)
-      async function resolveImageUrl(wf: ParsedWf, policyId: string, order: number): Promise<string | null> {
-        if (wf.imageUrl) return `${wf.imageUrl}?v=${Date.now()}`;
-        if (wf.imageBase64) {
-          try {
-            const bytes = Uint8Array.from(atob(wf.imageBase64), c => c.charCodeAt(0));
-            const blob = new Blob([bytes], { type: wf.imageMimeType });
-            const ext = wf.imageMimeType.split("/")[1] ?? "png";
-            const path = `${itemType}/${itemId}/${policyId}-${order}.${ext}`;
-            const { error: upErr } = await sb.storage.from("wireframes").upload(
-              path, new File([blob], `figma.${ext}`, { type: wf.imageMimeType }), { upsert: true }
-            );
-            if (!upErr) {
-              const { data: urlData } = sb.storage.from("wireframes").getPublicUrl(path);
-              return `${urlData.publicUrl}?v=${Date.now()}`;
-            }
-          } catch { /* skip */ }
+      async function resolveImageUrl(nodeId: string, policyId: string, order: number): Promise<string | null> {
+        const dashId = nodeId.replace(/:/g, "-");
+        const cdnUrl = imageUrls[nodeId] ?? imageUrls[dashId] ?? null;
+        if (!cdnUrl) return null;
+        try {
+          const imgRes = await fetch(cdnUrl);
+          if (!imgRes.ok) return cdnUrl;
+          const blob = await imgRes.blob();
+          const mimeType = imgRes.headers.get("content-type") ?? "image/png";
+          const ext = mimeType.split("/")[1]?.split(";")[0] ?? "png";
+          const path = `figma/${fileKey}/${dashId}-${policyId}-${order}.${ext}`;
+          const { error: upErr } = await sb.storage.from("wireframes").upload(path, blob, { contentType: mimeType, upsert: true });
+          if (upErr) return cdnUrl;
+          const { data: urlData } = sb.storage.from("wireframes").getPublicUrl(path);
+          return `${urlData.publicUrl}?v=${Date.now()}`;
+        } catch {
+          return cdnUrl;
         }
-        return null;
       }
 
       // ── 모드 A: 초록 포스트잇 섹션 (섹션 당 다수 wireframe) ──────────────
-      if (figmaSections && figmaSections.length > 0) {
-        setBulkLabel(`초록 포스트잇 ${figmaSections.length}개 섹션 감지됨`);
+      if (parseResult.hasSections && parseResult.sections.length > 0) {
+        setBulkLabel(`초록 포스트잇 ${parseResult.sections.length}개 섹션 감지됨`);
 
-        for (let i = 0; i < figmaSections.length; i++) {
-          const figSec = figmaSections[i];
-          setBulkLabel(`섹션 처리 중 (${i + 1}/${figmaSections.length}): ${figSec.sectionTitle}`);
+        for (let i = 0; i < parseResult.sections.length; i++) {
+          const sec = parseResult.sections[i];
+          setBulkLabel(`섹션 처리 중 (${i + 1}/${parseResult.sections.length}): ${sec.sectionTitle}`);
 
-          // 임시 policy 행 생성 (id 확보용)
           const { data: row } = await sb.from("policies").insert({
             item_type: itemType, item_id: itemId, kind: tab.id,
-            title: figSec.sectionTitle, mode: "canvas",
+            title: sec.sectionTitle, mode: "canvas",
             wireframes: [], flow_steps: [], tables: [], ai_screens: [],
-            description_groups: figSec.descriptionGroups ?? [],
+            description_groups: sec.descriptionGroups ?? [],
             description_items: [],
-            policy_note: figSec.policyNote ?? "",
-            ui_note: figSec.uiNote ?? "",
-            consideration_note: figSec.considerationNote ?? "",
+            policy_note: sec.policyNote ?? "",
+            ui_note: sec.uiNote ?? "",
+            consideration_note: sec.considerationNote ?? "",
             author_name: currentUserName, updated_at: new Date().toISOString(),
           }).select("*").single();
-          if (!row) { setBulkProgress(50 + Math.round(((i + 1) / figmaSections.length) * 50)); continue; }
+          if (!row) { setBulkProgress(50 + Math.round(((i + 1) / parseResult.sections.length) * 50)); continue; }
 
-          // 섹션 내 모든 wireframe 이미지 업로드
           const wfItems: WireframeItem[] = [];
-          for (let j = 0; j < figSec.wireframes.length; j++) {
-            const wf = figSec.wireframes[j];
-            const finalUrl = await resolveImageUrl(wf, row.id, j);
+          for (let j = 0; j < sec.wireframeFrames.length; j++) {
+            const frame = sec.wireframeFrames[j];
+            const finalUrl = await resolveImageUrl(frame.nodeId, row.id, j);
             wfItems.push({
-              id: crypto.randomUUID(), url: finalUrl, name: wf.name,
-              badges: wf.badges ?? [], isModal: wf.isModal ?? false, modalFor: null, order: j,
+              id: crypto.randomUUID(), url: finalUrl, name: frame.name,
+              badges: frame.badges ?? [], isModal: frame.isModal ?? false, modalFor: null, order: j,
             });
           }
 
-          // wireframes[] 업데이트
           const { data: updated } = await sb.from("policies")
             .update({ wireframes: wfItems, wireframe_url: wfItems[0]?.url ?? null, updated_at: new Date().toISOString() })
             .eq("id", row.id).select("*").single();
           created.push(normalizePolicy(updated ?? row));
-          setBulkProgress(50 + Math.round(((i + 1) / figmaSections.length) * 50));
+          setBulkProgress(50 + Math.round(((i + 1) / parseResult.sections.length) * 50));
         }
 
       // ── 모드 B: fallback — 와이어프레임 당 1섹션 ────────────────────────
       } else {
-        if (!sections?.length) { setBulkError("가져올 와이어프레임이 없습니다."); setBulkImporting(false); return; }
-        setBulkLabel(`텍스트 파싱 완료 · 이미지 업로드 중 (0/${sections.length})`);
+        if (!parseResult.wireframeFrames.length) {
+          setBulkError("가져올 와이어프레임이 없습니다."); setBulkImporting(false); return;
+        }
+        const totalFrames = parseResult.wireframeFrames.length;
+        setBulkLabel(`이미지 업로드 중 (0/${totalFrames})`);
 
-        for (let i = 0; i < sections.length; i++) {
-          const sec = sections[i];
-          setBulkLabel(`이미지 업로드 중 (${i + 1}/${sections.length})`);
+        for (let i = 0; i < totalFrames; i++) {
+          const frame = parseResult.wireframeFrames[i];
+          setBulkLabel(`이미지 업로드 중 (${i + 1}/${totalFrames})`);
+
           const { data: row, error: err } = await sb.from("policies").insert({
             item_type: itemType, item_id: itemId, kind: tab.id,
-            title: sec.name, mode: "canvas",
-            description_groups: i === 0 ? (parsedGroups?.length ? parsedGroups : descriptions.map((t, idx) => ({ id: `desc_group_${idx + 1}`, pinNumber: String(idx + 1), title: t, subItems: [] }))) : [],
-            description_items: i === 0 ? descriptions : [],
-            policy_note: i === 0 ? policyNote : "",
-            ui_note: i === 0 ? uiNote : "",
-            consideration_note: i === 0 ? considerationNote : "",
-            wireframes: [], flow_steps: [], tables: [], ai_screens: [],
+            title: frame.name, mode: "canvas",
+            description_groups: i === 0 ? parseResult.descriptionGroups : [],
+            description_items: [],
+            policy_note: i === 0 ? parseResult.policyNote : "",
+            ui_note: i === 0 ? parseResult.uiNote : "",
+            consideration_note: i === 0 ? parseResult.considerationNote : "",
+            wireframes: [], flow_steps: [],
+            tables: i === 0 ? parseResult.tables : [],
+            ai_screens: [],
             author_name: currentUserName, updated_at: new Date().toISOString(),
           }).select("*").single();
-          if (err || !row) { setBulkProgress(50 + Math.round(((i + 1) / sections.length) * 50)); continue; }
-          let saved = normalizePolicy(row);
+          if (err || !row) { setBulkProgress(50 + Math.round(((i + 1) / totalFrames) * 50)); continue; }
 
-          const finalUrl = await resolveImageUrl(sec, saved.id, i);
+          let saved = normalizePolicy(row);
+          const finalUrl = await resolveImageUrl(frame.nodeId, saved.id, 0);
           if (finalUrl) {
             const wfItem: WireframeItem = {
-              id: crypto.randomUUID(), url: finalUrl, name: sec.name,
-              badges: sec.badges ?? [], isModal: sec.isModal ?? false, modalFor: null, order: i,
+              id: crypto.randomUUID(), url: finalUrl, name: frame.name,
+              badges: frame.badges ?? [], isModal: frame.isModal ?? false, modalFor: null, order: i,
             };
             const { data: updated } = await sb.from("policies")
               .update({ wireframes: [wfItem], wireframe_url: wfItem.url, updated_at: new Date().toISOString() })
@@ -396,7 +417,7 @@ export function FeatureDetail({
             if (updated) saved = normalizePolicy(updated);
           }
           created.push(saved);
-          setBulkProgress(50 + Math.round(((i + 1) / sections.length) * 50));
+          setBulkProgress(50 + Math.round(((i + 1) / totalFrames) * 50));
         }
       }
 
@@ -412,16 +433,16 @@ export function FeatureDetail({
   if (loading) return <p className="mt-4 text-sm text-zinc-400">불러오는 중...</p>;
 
   return (
-    <div className="mt-6 flex flex-col gap-6">
-      {/* ── 탭 바 ── */}
-      <div className="flex flex-wrap items-center gap-1 self-start rounded-full bg-zinc-100 p-1">
+    <div className="mt-4 flex flex-col gap-3">
+      {/* ── 탭 바 — 세그먼트 컨트롤 스타일 ── */}
+      <div className="flex flex-wrap items-center gap-0.5 self-start rounded-lg bg-zinc-100 p-0.5">
         {allTabs.map(tab => (
           <button key={tab.id} type="button" onClick={() => setActiveTabKind(tab.id)}
-            className={`flex items-center gap-1 rounded-full px-4 py-2 text-sm font-bold transition-colors ${activeTabKind === tab.id ? "bg-white text-ink shadow-sm" : "text-zinc-500 hover:text-ink"}`}>
+            className={`flex items-center gap-1 rounded-md px-3 py-1 text-xs font-semibold transition-colors ${activeTabKind === tab.id ? "bg-white text-ink shadow-sm" : "text-zinc-500 hover:text-ink"}`}>
             {tab.name}
             {!tab.isFixed && activeTabKind === tab.id && canEdit && (
               <span role="button" onClick={e => { e.stopPropagation(); handleDeleteTab(tab.id); }}
-                className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full text-[10px] text-zinc-400 hover:bg-red-100 hover:text-red-500">×</span>
+                className="ml-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full text-[9px] text-zinc-400 hover:bg-red-100 hover:text-red-500">×</span>
             )}
           </button>
         ))}
@@ -430,43 +451,43 @@ export function FeatureDetail({
             <div className="flex items-center gap-1">
               <input autoFocus value={newTabName} onChange={e => setNewTabName(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") handleAddTab(); if (e.key === "Escape") { setAddingTab(false); setNewTabName(""); } }}
-                placeholder="탭 이름" className="w-24 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-brand/20" />
-              <button type="button" onClick={handleAddTab} className="rounded-full bg-brand px-3 py-1.5 text-xs font-bold text-white hover:bg-brand/90">확인</button>
-              <button type="button" onClick={() => { setAddingTab(false); setNewTabName(""); }} className="rounded-full px-2 py-1.5 text-xs text-zinc-500 hover:bg-white">취소</button>
+                placeholder="탭 이름" className="w-20 rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-xs outline-none focus:ring-2 focus:ring-brand/20" />
+              <button type="button" onClick={handleAddTab} className="rounded-md bg-brand px-2 py-0.5 text-xs font-bold text-white hover:bg-brand/90">확인</button>
+              <button type="button" onClick={() => { setAddingTab(false); setNewTabName(""); }} className="rounded-md px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-white">취소</button>
             </div>
           ) : (
             <button type="button" onClick={() => setAddingTab(true)}
-              className="rounded-full px-3 py-2 text-sm font-bold text-zinc-400 hover:bg-white hover:text-ink">+ 추가</button>
+              className="rounded-md px-2.5 py-1 text-xs font-semibold text-zinc-400 hover:bg-white hover:text-ink">+ 추가</button>
           )
         )}
       </div>
 
-      {/* ── Figma URL 바 (모든 탭 — [현행] 포함) ── */}
+      {/* ── Figma URL 바 (모든 탭 — [현행] 포함, 슬림) ── */}
       {canEdit && (
-        <div className="flex items-center gap-2 rounded-2xl bg-zinc-50 px-4 py-3">
+        <div className="flex items-center gap-2 rounded-xl bg-zinc-50 px-3 py-1.5">
           {editingTabFigmaId === activeTabKind ? (
             <>
               <FigmaLogo />
               <input autoFocus type="url" value={tabFigmaInput} onChange={e => setTabFigmaInput(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") handleSaveTabFigmaUrl(activeTabKind); if (e.key === "Escape") setEditingTabFigmaId(null); }}
                 placeholder="https://www.figma.com/design/..."
-                className="flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm outline-none focus:border-brand/40 focus:ring-2 focus:ring-brand/20" />
-              <button type="button" onClick={() => handleSaveTabFigmaUrl(activeTabKind)} className="rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-white hover:bg-brand/90">저장</button>
-              <button type="button" onClick={() => setEditingTabFigmaId(null)} className="rounded-lg px-3 py-1.5 text-xs font-bold text-zinc-400 hover:bg-zinc-100">취소</button>
+                className="flex-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs outline-none focus:border-brand/40 focus:ring-2 focus:ring-brand/20" />
+              <button type="button" onClick={() => handleSaveTabFigmaUrl(activeTabKind)} className="rounded-lg bg-brand px-3 py-1 text-xs font-bold text-white hover:bg-brand/90">저장</button>
+              <button type="button" onClick={() => setEditingTabFigmaId(null)} className="rounded-lg px-2.5 py-1 text-xs font-bold text-zinc-400 hover:bg-zinc-100">취소</button>
             </>
           ) : activeTabMeta.figma_url ? (
             <>
               <FigmaLogo />
               <span className="flex-1 truncate text-xs text-zinc-400">{activeTabMeta.figma_url}</span>
-              <button type="button" onClick={() => { setTabFigmaInput(activeTabMeta.figma_url ?? ""); setEditingTabFigmaId(activeTabKind); }} className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold text-zinc-400 hover:bg-zinc-100">편집</button>
+              <button type="button" onClick={() => { setTabFigmaInput(activeTabMeta.figma_url ?? ""); setEditingTabFigmaId(activeTabKind); }} className="shrink-0 rounded-lg px-2.5 py-1 text-xs font-bold text-zinc-400 hover:bg-zinc-100">편집</button>
               <button type="button" disabled={bulkImporting} onClick={() => handleBulkImport(activeTabMeta)}
-                className="shrink-0 rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-white hover:bg-brand/90 disabled:opacity-50">
+                className="shrink-0 rounded-lg bg-brand px-3 py-1 text-xs font-bold text-white hover:bg-brand/90 disabled:opacity-50">
                 {bulkImporting ? "불러오는 중..." : "전체 불러오기"}
               </button>
             </>
           ) : (
             <button type="button" onClick={() => { setTabFigmaInput(""); setEditingTabFigmaId(activeTabKind); }}
-              className="flex items-center gap-1.5 text-xs font-bold text-zinc-400 hover:text-brand">
+              className="flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-brand">
               <FigmaLogo />피그마 URL 연결하기
             </button>
           )}
@@ -513,6 +534,7 @@ export function FeatureDetail({
             onAddDraft={draft => setPolicies(prev => [...prev, draft])}
             currentUserName={currentUserName}
             canEdit={canEdit && activeTabKind !== "current"}
+            canImportFigma={canEdit}
           />
         ))}
         {canEdit && activeTabKind !== "current" && (
@@ -530,12 +552,12 @@ export function FeatureDetail({
 // PolicyCard
 // ──────────────────────────────────────────────────────────────────────────────
 
-function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAddDraft, currentUserName, canEdit }: {
+function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAddDraft, currentUserName, canEdit, canImportFigma }: {
   policy: Policy; tabName: string; itemType: ItemType; itemId: string;
   onSaved: (p: Policy) => void;
   onDelete?: () => void;
   onAddDraft?: (p: Policy) => void;
-  currentUserName: string; canEdit: boolean;
+  currentUserName: string; canEdit: boolean; canImportFigma?: boolean;
 }) {
   const [title, setTitle] = useState(policy.title);
   const [mode, setMode] = useState<PolicyMode>(policy.mode);
@@ -772,17 +794,17 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
     setUploading(false);
   }
 
-  // ── 피그마 단건 임포트 (2단계 진행률) ─────────────────────────────────
+  // ── 피그마 단건 임포트 (클라이언트 파싱, 3단계 진행률) ─────────────────────
   async function handleFigmaImport() {
     if (!figmaUrl.trim()) return;
     setError(null); setFigmaImporting(true); setShowFigmaInput(false); setFigmaProgress(0);
 
-    // Phase 1: 0→40% (노드 분석)
     const animInterval = setInterval(() => {
-      setFigmaProgress(prev => prev < 38 ? prev + 2 : prev);
+      setFigmaProgress(prev => prev < 18 ? prev + 2 : prev);
     }, 150);
 
     try {
+      // Phase 1: 0→20% — 서버 경량 Proxy → Raw 노드
       const res = await fetch("/api/figma-parse", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: figmaUrl.trim() }),
@@ -790,54 +812,78 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
       clearInterval(animInterval);
       if (!res.ok) { setError((await res.json().catch(() => ({}))).error ?? "피그마를 가져오지 못했습니다."); setFigmaImporting(false); return; }
 
-      const parsed = await res.json();
-      const { descriptionGroups, policyNote: newPN, uiNote: newUN, considerationNote: newCN, wireframeName, sections: parsedSections } = parsed;
+      const { rawNode, fileKey } = await res.json();
+      setFigmaProgress(20);
 
-      // Phase 2: 40→80% (텍스트/표 매핑)
-      setFigmaProgress(40);
-      const newGroups: DescGroup[] = Array.isArray(descriptionGroups) && descriptionGroups.length
-        ? descriptionGroups
+      // Phase 2: 20→50% — 클라이언트 파싱 (브라우저, 타임아웃 없음)
+      const parseResult = parseFigmaTree(rawNode);
+      const newGroups: DescGroup[] = parseResult.descriptionGroups.length
+        ? parseResult.descriptionGroups
         : [{ id: crypto.randomUUID(), pinNumber: "1", title: "", subItems: [] }];
       setDescGroups(newGroups);
-      if (newPN) { setPolicyNote(newPN); setShowPolicy(true); }
-      if (newUN) { setUiNote(newUN); setShowUi(true); }
-      if (newCN) { setConsiderNote(newCN); setShowConsider(true); }
-      if (wireframeName && !title) setTitle(wireframeName);
+      if (parseResult.policyNote)       { setPolicyNote(parseResult.policyNote); setShowPolicy(true); }
+      if (parseResult.uiNote)           { setUiNote(parseResult.uiNote); setShowUi(true); }
+      if (parseResult.considerationNote){ setConsiderNote(parseResult.considerationNote); setShowConsider(true); }
+      if (parseResult.wireframeName && !title) setTitle(parseResult.wireframeName);
       setFigmaUrl("");
+      setFigmaProgress(40);
+
+      // Phase 3: 40→80% — 이미지 Export URL 수신
+      const allFrameIds = parseResult.hasSections
+        ? parseResult.sections.flatMap(s => s.wireframeFrames.map(w => w.nodeId))
+        : parseResult.wireframeFrames.map(w => w.nodeId);
+
+      let imageUrls: Record<string, string | null> = {};
+      if (allFrameIds.length > 0) {
+        const imgRes = await fetch("/api/figma-images", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileKey, nodeIds: allFrameIds }),
+        });
+        if (imgRes.ok) {
+          const imgData = await imgRes.json();
+          imageUrls = imgData.images ?? {};
+        }
+      }
       setFigmaProgress(60);
 
-      // Phase 3: 80→100% (N개 와이어프레임 이미지 전수 로딩)
-      setFigmaProgress(80);
-      type RawSection = { name: string; imageUrl: string; imageBase64: string; imageMimeType: string; badges: WireframeItem["badges"]; isModal: boolean };
-      const sections = (Array.isArray(parsedSections) ? parsedSections : []) as RawSection[];
+      // Phase 4: 60→100% — CDN 다운로드 + Supabase 업로드
       const sb = createClient();
 
-      const nextWfs: WireframeItem[] = await Promise.all(
-        sections.map(async (sec, i) => {
+      async function resolveUrl(nodeId: string, idx: number): Promise<string | null> {
+        const dashId = nodeId.replace(/:/g, "-");
+        const cdnUrl = imageUrls[nodeId] ?? imageUrls[dashId] ?? null;
+        if (!cdnUrl) return null;
+        try {
+          const imgRes = await fetch(cdnUrl);
+          if (!imgRes.ok) return cdnUrl;
+          const blob = await imgRes.blob();
+          const mimeType = imgRes.headers.get("content-type") ?? "image/png";
+          const ext = mimeType.split("/")[1]?.split(";")[0] ?? "png";
           const wfId = crypto.randomUUID();
-          let finalUrl: string | null = sec.imageUrl ? `${sec.imageUrl}?v=${Date.now()}` : null;
+          const path = `figma/${fileKey}/${dashId}-${wfId}-${idx}.${ext}`;
+          const { error: upErr } = await sb.storage.from("wireframes").upload(path, blob, { contentType: mimeType, upsert: true });
+          if (upErr) return cdnUrl;
+          const { data: urlData } = sb.storage.from("wireframes").getPublicUrl(path);
+          return `${urlData.publicUrl}?v=${Date.now()}`;
+        } catch {
+          return cdnUrl;
+        }
+      }
 
-          // base64 fallback → 클라이언트에서 Supabase 업로드
-          if (!finalUrl && sec.imageBase64) {
-            try {
-              const ext = sec.imageMimeType?.split("/")[1] ?? "png";
-              const bytes = Uint8Array.from(atob(sec.imageBase64), c => c.charCodeAt(0));
-              const blob = new Blob([bytes], { type: sec.imageMimeType ?? "image/png" });
-              const path = `${itemType}/${itemId}/${wfId}-figma.${ext}`;
-              const { error: upErr } = await sb.storage.from("wireframes").upload(path, blob, { contentType: sec.imageMimeType, upsert: true });
-              if (!upErr) {
-                const { data: urlData } = sb.storage.from("wireframes").getPublicUrl(path);
-                finalUrl = `${urlData.publicUrl}?v=${Date.now()}`;
-              }
-            } catch (e) { console.error(`figma section[${i}] upload failed`, e); }
-          }
+      const flatFrames = parseResult.hasSections
+        ? parseResult.sections.flatMap(s => s.wireframeFrames)
+        : parseResult.wireframeFrames;
 
+      const nextWfs: WireframeItem[] = await Promise.all(
+        flatFrames.map(async (frame, i) => {
+          const finalUrl = await resolveUrl(frame.nodeId, i);
+          setFigmaProgress(60 + Math.round(((i + 1) / flatFrames.length) * 35));
           return {
-            id: wfId,
+            id: crypto.randomUUID(),
             url: finalUrl,
-            name: sec.name || `화면 ${i + 1}`,
-            badges: sec.badges ?? [],
-            isModal: sec.isModal ?? false,
+            name: frame.name || `화면 ${i + 1}`,
+            badges: frame.badges ?? [],
+            isModal: frame.isModal ?? false,
             modalFor: null,
             order: i,
           };
@@ -847,39 +893,41 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
       // 메인 화면들 간 순차 플로우 스텝 자동 생성
       const mainNewWfs = nextWfs.filter(w => !w.isModal);
       const autoFlowSteps: FlowStep[] = mainNewWfs.slice(0, -1).map((wf, i) => ({
-        id: crypto.randomUUID(),
-        from: wf.id,
-        to: mainNewWfs[i + 1].id,
-        label: `Step ${i + 1}`,
+        id: crypto.randomUUID(), from: wf.id, to: mainNewWfs[i + 1].id, label: `Step ${i + 1}`,
       }));
 
       const finalWfs = nextWfs.length > 0 ? nextWfs : wireframes;
       setWireframes(finalWfs);
       if (autoFlowSteps.length > 0) setFlowSteps(autoFlowSteps);
+      if (parseResult.tables.length > 0) setTables(parseResult.tables);
 
       await persist({
         description_groups: newGroups,
         wireframes: finalWfs,
         flow_steps: autoFlowSteps.length > 0 ? autoFlowSteps : flowSteps,
         wireframe_url: finalWfs[0]?.url ?? null,
-        ...(wireframeName && !title ? { title: wireframeName } : {}),
-        ...(newPN ? { policy_note: newPN } : {}),
-        ...(newUN ? { ui_note: newUN } : {}),
-        ...(newCN ? { consideration_note: newCN } : {}),
+        ...(parseResult.wireframeName && !title ? { title: parseResult.wireframeName } : {}),
+        ...(parseResult.policyNote ? { policy_note: parseResult.policyNote } : {}),
+        ...(parseResult.uiNote ? { ui_note: parseResult.uiNote } : {}),
+        ...(parseResult.considerationNote ? { consideration_note: parseResult.considerationNote } : {}),
+        ...(parseResult.tables.length > 0 ? { tables: parseResult.tables } : {}),
       });
 
       markClean({
         wireframes: finalWfs,
         flowSteps: autoFlowSteps.length > 0 ? autoFlowSteps : flowSteps,
         descGroups: newGroups,
-        ...(newPN ? { policyNote: newPN } : {}),
-        ...(newUN ? { uiNote: newUN } : {}),
-        ...(newCN ? { considerNote: newCN } : {}),
-        ...(wireframeName && !title ? { title: wireframeName } : {}),
+        ...(parseResult.policyNote ? { policyNote: parseResult.policyNote } : {}),
+        ...(parseResult.uiNote ? { uiNote: parseResult.uiNote } : {}),
+        ...(parseResult.considerationNote ? { considerNote: parseResult.considerationNote } : {}),
+        ...(parseResult.wireframeName && !title ? { title: parseResult.wireframeName } : {}),
       });
       setFigmaProgress(100);
       setTimeout(() => { setFigmaImporting(false); setFigmaProgress(0); }, 800);
-    } catch (e) { clearInterval(animInterval); console.error(e); setError("피그마 가져오기 중 오류가 발생했습니다."); setFigmaImporting(false); }
+    } catch (e) {
+      clearInterval(animInterval);
+      console.error(e); setError("피그마 가져오기 중 오류가 발생했습니다."); setFigmaImporting(false);
+    }
   }
 
   // ── WireframeCanvas의 "✨ AI 고도화" 버튼 핸들러 ────────────────────────
@@ -1014,43 +1062,38 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
   }, [aiScreens]);
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* ── 카드 헤더 ── */}
-      <div className="flex flex-wrap items-center gap-2 px-1">
-        <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${badgeStyle}`}>{tabName}</span>
-        <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${versionBadgeStyle}`}>
+    <div className="flex flex-col gap-2">
+      {/* ── 카드 헤더 — 단일 flex-row: 버전배지 + 제목 + 작성자 + 저장버튼 + 삭제 ── */}
+      <div className="flex items-center gap-2 px-1">
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${versionBadgeStyle}`}>
           {VERSION_LABEL}{isLocked ? " 🔒" : ""}
         </span>
         <input value={title} readOnly={!canEdit || isLocked}
           onChange={e => setTitle(e.target.value)}
           onBlur={() => { if (title !== policy.title) persist({ title }); }}
           placeholder="화면 제목을 입력하세요"
-          className={`flex-1 rounded-xl px-3 py-2 text-lg font-bold text-ink outline-none placeholder:font-normal placeholder:text-zinc-400 transition-colors ${(canEdit && !isLocked) ? "hover:bg-white focus:bg-white focus:ring-2 focus:ring-brand/20" : ""}`} />
+          className={`flex-1 min-w-0 rounded-lg px-2.5 py-1 text-sm font-bold text-ink outline-none placeholder:font-normal placeholder:text-zinc-400 transition-colors ${(canEdit && !isLocked) ? "hover:bg-white focus:bg-white focus:ring-2 focus:ring-brand/20" : ""}`} />
         {(policy.author_name || fmtDate(policy.updated_at)) && (
-          <span className="text-xs text-zinc-400">{[policy.author_name, fmtDate(policy.updated_at)].filter(Boolean).join(" · ")}</span>
+          <span className="shrink-0 text-xs text-zinc-400">{[policy.author_name, fmtDate(policy.updated_at)].filter(Boolean).join(" · ")}</span>
+        )}
+        {canEdit && !isLocked && (
+          <button type="button" onClick={() => setShowSaveModal(true)}
+            disabled={publishing}
+            className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold transition-colors disabled:opacity-40 ${isDirty || !policy.id ? "bg-brand text-white hover:bg-brand/90" : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"}`}>
+            {publishing ? "처리 중..." : (isDirty || !policy.id) ? "💾 저장 / 발행" : "✓ 저장됨"}
+          </button>
         )}
         {onDelete && !isLocked && (
-          <button type="button" onClick={() => setShowDeleteConfirm(true)} className="rounded-full p-2 text-zinc-400 hover:bg-red-50 hover:text-red-500">🗑</button>
+          <button type="button" onClick={() => setShowDeleteConfirm(true)} className="shrink-0 rounded-full p-1.5 text-zinc-400 hover:bg-red-50 hover:text-red-500">🗑</button>
         )}
       </div>
 
-      {/* ── 저장/발행 통합 버튼 ── */}
-      {canEdit && !isLocked && (
-        <div className="flex items-center justify-end px-1">
-          <button type="button" onClick={() => setShowSaveModal(true)}
-            disabled={publishing}
-            className={`rounded-full px-4 py-1.5 text-xs font-bold transition-colors disabled:opacity-40 ${isDirty || !policy.id ? "bg-brand text-white hover:bg-brand/90" : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"}`}>
-            {publishing ? "처리 중..." : (isDirty || !policy.id) ? "💾 저장 / 발행" : "✓ 저장됨"}
-          </button>
-        </div>
-      )}
-
-      {/* ── 모드 스위처 ── */}
-      <div className="flex items-center gap-1 self-start rounded-xl bg-zinc-100 p-1">
-        {([["canvas", "🖼️ 시안 불러오기"], ["ai", "✨ AI 생성"]] as [PolicyMode, string][]).map(([m, label]) => (
+      {/* ── 모드 스위처 — px-3 py-1 text-xs ── */}
+      <div className="flex items-center gap-0.5 self-start rounded-lg bg-zinc-100 p-0.5">
+        {([["canvas", "시안 불러오기"], ["ai", "AI 생성"]] as [PolicyMode, string][]).map(([m, label]) => (
           <button key={m} type="button"
             onClick={canEdit ? () => { setMode(m); persist({ mode: m }); } : undefined}
-            className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${mode === m ? "bg-white text-ink shadow-sm" : "text-zinc-500 hover:text-ink"} ${!canEdit ? "pointer-events-none" : ""}`}>
+            className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${mode === m ? "bg-white text-ink shadow-sm" : "text-zinc-500 hover:text-ink"} ${!canEdit ? "pointer-events-none" : ""}`}>
             {label}
           </button>
         ))}
@@ -1112,11 +1155,12 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
           </div>
         )}
 
-        {/* ── 피그마 임포트 단건 UI (canvas 모드 공통) ── */}
-        {mode === "canvas" && canEdit && (
-          <div className="border-b border-zinc-100 p-4">
+        {/* ── 피그마 임포트 단건 UI (canvas 모드, canImportFigma 권한) ── */}
+        {/* [현행] 탭도 포함 — 데이터 로드 후 우측 패널은 canEdit=false로 자동 잠금 */}
+        {mode === "canvas" && (canImportFigma ?? canEdit) && (
+          <div className="border-b border-zinc-100 px-4 py-2.5">
             {figmaImporting ? (
-              <ProgressBar progress={figmaProgress} label={figmaProgress < 40 ? "피그마 레이어 분석 중..." : figmaProgress < 80 ? "텍스트/표 데이터 매핑 중..." : figmaProgress < 100 ? "와이어프레임 이미지 로딩 중..." : "완료!"} />
+              <ProgressBar progress={figmaProgress} label={figmaProgress < 20 ? "피그마 노드 수신 중..." : figmaProgress < 50 ? "노드 파싱 중..." : figmaProgress < 80 ? "이미지 URL 추출 중..." : figmaProgress < 100 ? "이미지 업로드 중..." : "완료!"} />
             ) : showFigmaInput ? (
               <div className="flex gap-2">
                 <FigmaLogo />
@@ -1124,22 +1168,22 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
                   onChange={e => setFigmaUrl(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") handleFigmaImport(); if (e.key === "Escape") { setShowFigmaInput(false); setFigmaUrl(""); } }}
                   placeholder="https://www.figma.com/design/..."
-                  className="flex-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand/40 focus:ring-2 focus:ring-brand/20" />
+                  className="flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs outline-none focus:border-brand/40 focus:ring-2 focus:ring-brand/20" />
                 <button type="button" onClick={handleFigmaImport} disabled={uploading}
-                  className="rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white hover:bg-brand/90 disabled:opacity-50">
+                  className="rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-white hover:bg-brand/90 disabled:opacity-50">
                   가져오기
                 </button>
                 <button type="button" onClick={() => { setShowFigmaInput(false); setFigmaUrl(""); }}
-                  className="rounded-xl px-3 py-2 text-sm font-bold text-zinc-400 hover:bg-zinc-100">취소</button>
+                  className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-zinc-400 hover:bg-zinc-100">취소</button>
               </div>
             ) : wireframes.filter(w => !w.isModal).length > 0 ? (
               <button type="button" onClick={() => setShowFigmaInput(true)}
-                className="flex items-center gap-1.5 text-xs font-bold text-zinc-400 hover:text-brand">
+                className="flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-brand">
                 <FigmaLogo />피그마 다시 불러오기
               </button>
             ) : (
               <button type="button" onClick={() => setShowFigmaInput(true)}
-                className="flex w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-zinc-200 py-3 text-sm font-bold text-zinc-400 hover:border-brand/40 hover:text-brand">
+                className="flex w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-zinc-200 py-2.5 text-xs font-bold text-zinc-400 hover:border-brand/40 hover:text-brand">
                 <FigmaLogo />피그마 URL로 가져오기
               </button>
             )}
@@ -1147,7 +1191,7 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
         )}
 
         {/* ── 본문 레이아웃: [무한 캔버스] | [드래그 핸들] | [우측 패널] ── */}
-        <div className="flex" style={{ height: 'calc(100vh - 160px)', minHeight: 700 }}>
+        <div className="flex" style={{ height: 'calc(100vh - 140px)', minHeight: 680 }}>
 
           {/* 무한 캔버스 영역 */}
           <InfiniteCanvas key={mode} className="flex-1 min-w-0" initialScale={mode === "ai" ? 1 : 0.5}>
@@ -1493,7 +1537,7 @@ function DescriptionPanel({
           <span className="text-xs font-bold text-zinc-400">디스크립션</span>
           {canEdit && (
             <button type="button" onClick={addGroup}
-              className="px-2.5 py-1 text-xs font-medium text-gray-500 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100 hover:text-gray-700 transition-colors">+ 그룹 추가</button>
+              className="px-2 py-0.5 text-[10px] font-medium text-gray-500 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100 hover:text-gray-700 transition-colors">+ 그룹 추가</button>
           )}
         </div>
 

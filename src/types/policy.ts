@@ -1,6 +1,6 @@
 // ── 공유 데이터 타입 ──────────────────────────────────────────────────────────
 
-export type PolicyMode = "image" | "figma" | "ai";
+export type PolicyMode = "image" | "figma" | "ai" | "canvas";
 
 /** 이미지 위 번호 배지 — pinNumber는 "1", "3-1", "3-2" 같은 문자열 */
 export type BadgeMark = {
@@ -84,6 +84,13 @@ export type Policy = {
   sort_order: number;
   author_name: string | null;
   updated_at: string | null;
+  // 버전 관리 필드
+  version_major: number;
+  version_minor: number;
+  is_locked: boolean;
+  published_at: string | null;
+  publish_type: string | null;
+  change_log: string;
 };
 
 /** DB row를 클라이언트 Policy 타입으로 정규화 */
@@ -137,7 +144,7 @@ export function normalizePolicy(raw: Record<string, unknown>): Policy {
 
   return {
     ...p,
-    mode: (p.mode as PolicyMode) || "image",
+    mode: (p.mode as PolicyMode) || "canvas",
     wireframes,
     flow_steps: Array.isArray(p.flow_steps) ? p.flow_steps : [],
     tables: Array.isArray(p.tables) ? p.tables : [],
@@ -145,5 +152,12 @@ export function normalizePolicy(raw: Record<string, unknown>): Policy {
     description_items: Array.isArray(p.description_items) ? p.description_items : [],
     description_groups: descGroups,
     image_badges: Array.isArray(p.image_badges) ? migrateBadges(p.image_badges) : [],
+    // 버전 관리 필드 기본값
+    version_major: typeof p.version_major === "number" ? p.version_major : (p.kind === "current" ? 1 : 0),
+    version_minor: typeof p.version_minor === "number" ? p.version_minor : 1,
+    is_locked: typeof p.is_locked === "boolean" ? p.is_locked : false,
+    published_at: p.published_at ?? null,
+    publish_type: p.publish_type ?? null,
+    change_log: p.change_log ?? "",
   };
 }
