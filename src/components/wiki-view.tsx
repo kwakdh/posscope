@@ -46,29 +46,41 @@ const BLOCK_TEXT_CLS: Partial<Record<BlockType, string>> = {
   callout:   "text-sm text-ink leading-[1.8]",
 };
 
+// ── 버전 태그 제거 유틸 ──────────────────────────────────────────────────────
+// 피그마 텍스트 내 "(v0.1 수정)", "v0.2 변경" 등 버전 표딱지를 완전히 제거한다.
+
+function stripVersionTags(text: string): string {
+  return text
+    .replace(/\s*\([Vv]\s*\d+(?:\.\d+)*[^\)]*\)/g, "")
+    .replace(/\s+[Vv]\s*\d+\.\d+(?:\.\d+)*\s*(?:수정|변경|추가|삭제|modification|update|change)?\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 // ── 피그마 파서 결과 → 원본 텍스트 변환 (AI 입력용) ──────────────────────────
 
 function buildRawTextFromParsed(parsed: ParseResult): string {
   const lines: string[] = [];
+  const sv = (t: string) => stripVersionTags(t);
   if (parsed.hasSections && parsed.sections.length > 0) {
     for (const section of parsed.sections) {
-      lines.push(`[${section.sectionTitle}]`);
+      lines.push(`[${sv(section.sectionTitle)}]`);
       for (const group of section.descriptionGroups) {
-        if (group.title) lines.push(group.title);
-        for (const sub of group.subItems) lines.push(`  - ${sub.text}`);
+        if (group.title) lines.push(sv(group.title));
+        for (const sub of group.subItems) lines.push(`  - ${sv(sub.text)}`);
       }
-      if (section.policyNote) lines.push(`★ ${section.policyNote}`);
-      if (section.uiNote) lines.push(`UI 참고: ${section.uiNote}`);
-      if (section.considerationNote) lines.push(`고려사항: ${section.considerationNote}`);
+      if (section.policyNote) lines.push(`★ ${sv(section.policyNote)}`);
+      if (section.uiNote) lines.push(`UI 참고: ${sv(section.uiNote)}`);
+      if (section.considerationNote) lines.push(`고려사항: ${sv(section.considerationNote)}`);
     }
   } else {
     for (const group of parsed.descriptionGroups) {
-      if (group.title) lines.push(group.title);
-      for (const sub of group.subItems) lines.push(`  - ${sub.text}`);
+      if (group.title) lines.push(sv(group.title));
+      for (const sub of group.subItems) lines.push(`  - ${sv(sub.text)}`);
     }
-    if (parsed.policyNote) lines.push(`★ ${parsed.policyNote}`);
-    if (parsed.uiNote) lines.push(`UI 참고: ${parsed.uiNote}`);
-    if (parsed.considerationNote) lines.push(`고려사항: ${parsed.considerationNote}`);
+    if (parsed.policyNote) lines.push(`★ ${sv(parsed.policyNote)}`);
+    if (parsed.uiNote) lines.push(`UI 참고: ${sv(parsed.uiNote)}`);
+    if (parsed.considerationNote) lines.push(`고려사항: ${sv(parsed.considerationNote)}`);
   }
   return lines.filter(Boolean).join("\n");
 }
@@ -77,40 +89,41 @@ function buildRawTextFromParsed(parsed: ParseResult): string {
 
 function buildFallbackBlocks(parsed: ParseResult): Block[] {
   const blocks: Block[] = [];
+  const sv = (t: string) => stripVersionTags(t);
   if (parsed.hasSections && parsed.sections.length > 0) {
     for (const section of parsed.sections) {
-      blocks.push({ id: crypto.randomUUID(), type: "h2", content: section.sectionTitle });
+      blocks.push({ id: crypto.randomUUID(), type: "h2", content: sv(section.sectionTitle) });
       for (const group of section.descriptionGroups) {
-        blocks.push({ id: crypto.randomUUID(), type: "bullet", content: group.title });
+        if (sv(group.title)) blocks.push({ id: crypto.randomUUID(), type: "bullet", content: sv(group.title) });
         for (const sub of group.subItems) {
-          blocks.push({ id: crypto.randomUUID(), type: "paragraph", content: sub.text });
+          if (sv(sub.text)) blocks.push({ id: crypto.randomUUID(), type: "paragraph", content: sv(sub.text) });
         }
       }
       if (section.policyNote) {
-        blocks.push({ id: crypto.randomUUID(), type: "callout", content: `정책: ${section.policyNote}` });
+        blocks.push({ id: crypto.randomUUID(), type: "callout", content: `정책: ${sv(section.policyNote)}` });
       }
       if (section.uiNote) {
-        blocks.push({ id: crypto.randomUUID(), type: "callout", content: `UI 참고: ${section.uiNote}` });
+        blocks.push({ id: crypto.randomUUID(), type: "callout", content: `UI 참고: ${sv(section.uiNote)}` });
       }
       if (section.considerationNote) {
-        blocks.push({ id: crypto.randomUUID(), type: "callout", content: `고려사항: ${section.considerationNote}` });
+        blocks.push({ id: crypto.randomUUID(), type: "callout", content: `고려사항: ${sv(section.considerationNote)}` });
       }
     }
   } else {
     for (const group of parsed.descriptionGroups) {
-      blocks.push({ id: crypto.randomUUID(), type: "bullet", content: group.title });
+      if (sv(group.title)) blocks.push({ id: crypto.randomUUID(), type: "bullet", content: sv(group.title) });
       for (const sub of group.subItems) {
-        blocks.push({ id: crypto.randomUUID(), type: "paragraph", content: sub.text });
+        if (sv(sub.text)) blocks.push({ id: crypto.randomUUID(), type: "paragraph", content: sv(sub.text) });
       }
     }
     if (parsed.policyNote) {
-      blocks.push({ id: crypto.randomUUID(), type: "callout", content: parsed.policyNote });
+      blocks.push({ id: crypto.randomUUID(), type: "callout", content: sv(parsed.policyNote) });
     }
     if (parsed.uiNote) {
-      blocks.push({ id: crypto.randomUUID(), type: "callout", content: `UI 참고: ${parsed.uiNote}` });
+      blocks.push({ id: crypto.randomUUID(), type: "callout", content: `UI 참고: ${sv(parsed.uiNote)}` });
     }
     if (parsed.considerationNote) {
-      blocks.push({ id: crypto.randomUUID(), type: "callout", content: `고려사항: ${parsed.considerationNote}` });
+      blocks.push({ id: crypto.randomUUID(), type: "callout", content: `고려사항: ${sv(parsed.considerationNote)}` });
     }
   }
   return blocks;
@@ -419,6 +432,86 @@ export function WikiView({
         showToast("AI가 피그마 내용을 구조화했습니다.");
       } else {
         showToast("가져올 텍스트 콘텐츠를 찾지 못했습니다.");
+      }
+    } catch {
+      setFigmaError("피그마 가져오기 중 오류가 발생했습니다.");
+    } finally {
+      setFigmaImporting(false);
+    }
+  }
+
+  // ── 피그마 내용 하단에 추가 (기존 블록 유지 + 새 내용 append) ────────────
+  async function handleFigmaAppend() {
+    const urlToUse = savedFigmaUrl;
+    if (!urlToUse?.trim()) return;
+    setFigmaImporting(true); setFigmaError(null);
+    try {
+      const res = await fetch("/api/figma-parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: urlToUse }),
+      });
+      if (!res.ok) {
+        const { error } = await res.json().catch(() => ({})) as { error?: string };
+        setFigmaError(error ?? "피그마 가져오기 실패"); return;
+      }
+      const { rawNode } = await res.json() as { rawNode: import("@/utils/figmaParser").FigmaNode };
+      const parsed = parseFigmaTree(rawNode);
+
+      const fallbackBlocks = buildFallbackBlocks(parsed);
+      const rawText = buildRawTextFromParsed(parsed);
+      const menuTitle = menus.find(m => m.id === selectedMenuId)?.title ?? parsed.wireframeName ?? "";
+      let appendBlocks: Block[] = fallbackBlocks;
+
+      if (rawText.trim() && fallbackBlocks.length > 0) {
+        setAiStructuring(true);
+        try {
+          const aiRes = await fetch("/api/wiki-ai-structure", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rawText, menuTitle }),
+          });
+          if (aiRes.ok) {
+            const { blocks: aiBlocks } = await aiRes.json() as { blocks: { type: string; content: string }[] };
+            if (Array.isArray(aiBlocks) && aiBlocks.length > 0) {
+              appendBlocks = aiBlocks.map(b => ({
+                id: crypto.randomUUID(),
+                type: b.type as BlockType,
+                content: b.content ?? "",
+              }));
+            }
+          }
+        } catch {
+          // AI 실패 시 파서 폴백 블록 사용
+        } finally {
+          setAiStructuring(false);
+        }
+      }
+
+      if (appendBlocks.length > 0) {
+        const divider: Block = { id: crypto.randomUUID(), type: "divider", content: "" };
+        const mergedBlocks = [...blocks, divider, ...appendBlocks];
+        setBlocks(mergedBlocks);
+        setIsDirty(true);
+        if (doc) {
+          setSaving(true);
+          try {
+            const saveRes = await fetch(`/api/wiki-docs/${doc.id}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ title, blocks: mergedBlocks, authorName: currentUserName }),
+            });
+            if (saveRes.ok) {
+              const { doc: updated } = await saveRes.json();
+              if (updated) initDoc({ ...doc, ...updated });
+            }
+          } finally {
+            setSaving(false);
+          }
+        }
+        showToast("피그마 내용을 하단에 추가했습니다.");
+      } else {
+        showToast("추가할 콘텐츠를 찾지 못했습니다.");
       }
     } catch {
       setFigmaError("피그마 가져오기 중 오류가 발생했습니다.");
@@ -788,60 +881,63 @@ export function WikiView({
           {docLoading ? (
             <div className="flex h-full items-center justify-center text-sm text-zinc-400">불러오는 중...</div>
           ) : doc ? (
-            <div className="mx-auto max-w-3xl px-12 py-10">
+            <div className="mx-auto max-w-3xl px-12 py-10 select-text">
 
               {/* 문서 메타 헤더 */}
               <div className="mb-8 flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-zinc-100 pb-4 text-xs text-zinc-400">
-                <span className="rounded-full bg-zinc-100 px-2 py-0.5 font-bold text-zinc-500">
-                  v{doc.version_major}.{doc.version_minor}
-                </span>
                 {doc.updated_at && (
-                  <>
-                    <span>·</span>
-                    <span>
-                      최종 수정: {new Date(doc.updated_at).toLocaleDateString("ko-KR", {
-                        year: "numeric", month: "2-digit", day: "2-digit",
-                      })}
-                    </span>
-                  </>
+                  <span>
+                    최종 수정: {new Date(doc.updated_at).toLocaleDateString("ko-KR", {
+                      year: "numeric", month: "2-digit", day: "2-digit",
+                    })}
+                  </span>
                 )}
                 {doc.author_name && (
                   <>
-                    <span>·</span>
+                    {doc.updated_at && <span>·</span>}
                     <span>작성자: {doc.author_name}</span>
                   </>
                 )}
-                <div className="ml-auto flex items-center gap-2">
-                  {canEdit && savedFigmaUrl && (
+                <div className="ml-auto flex flex-wrap items-center gap-2">
+                  {canEdit && savedFigmaUrl ? (
+                    /* ── 피그마 연동 후: 3버튼 그룹 ── */
                     <>
                       <button
                         onClick={() => handleFigmaImport(savedFigmaUrl)}
                         disabled={figmaImporting || aiStructuring}
-                        className="rounded-full px-3 py-1.5 text-xs font-bold text-zinc-400 hover:bg-zinc-100 hover:text-brand transition-colors disabled:opacity-40"
-                        title="저장된 피그마 URL로 다시 가져오기"
+                        className="rounded-lg px-3 py-1.5 text-xs font-bold text-zinc-500 border border-zinc-200 hover:border-brand hover:text-brand transition-colors disabled:opacity-40"
+                        title="저장된 피그마 URL로 내용 전체 갱신"
                       >
-                        {aiStructuring ? "AI 구조화 중..." : figmaImporting ? "가져오는 중..." : "🔄 다시 가져오기"}
+                        {aiStructuring ? "AI 분석 중..." : figmaImporting ? "가져오는 중..." : "🔄 다시 가져오기"}
+                      </button>
+                      <button
+                        onClick={handleFigmaAppend}
+                        disabled={figmaImporting || aiStructuring}
+                        className="rounded-lg px-3 py-1.5 text-xs font-bold text-brand border border-brand hover:bg-brand/5 transition-colors disabled:opacity-40"
+                        title="현재 위키 하단에 피그마 내용 추가"
+                      >
+                        {aiStructuring ? "AI 분석 중..." : figmaImporting ? "가져오는 중..." : "➕ 내용 추가하기"}
                       </button>
                       <a
                         href={savedFigmaUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="rounded-full px-3 py-1.5 text-xs font-bold text-zinc-400 hover:bg-zinc-100 hover:text-brand transition-colors"
+                        className="rounded-lg px-3 py-1.5 text-xs font-bold text-zinc-500 border border-zinc-200 hover:border-zinc-400 hover:text-zinc-700 transition-colors"
                         title="피그마 원본 열기"
                       >
                         🔗 피그마 바로가기
                       </a>
                     </>
-                  )}
-                  {canEdit && !savedFigmaUrl && (
+                  ) : canEdit ? (
+                    /* ── 초기 상태: 강조 가져오기 버튼 ── */
                     <button
                       onClick={() => { setShowFigmaModal(true); setFigmaError(null); }}
-                      className="rounded-full px-3 py-1.5 text-xs font-bold text-zinc-400 hover:bg-zinc-100 hover:text-brand transition-colors"
-                      title="피그마에서 가져오기"
+                      className="rounded-xl px-4 py-2 text-sm font-bold bg-blue-600 text-white shadow shadow-blue-300 hover:bg-blue-700 transition-colors"
+                      title="피그마 URL을 연결하여 내용 자동 추출"
                     >
-                      피그마에서 가져오기
+                      🔗 피그마 URL로 가져오기
                     </button>
-                  )}
+                  ) : null}
                   {canEdit && (
                     <button
                       onClick={() => handleSave()}
@@ -911,10 +1007,10 @@ export function WikiView({
 
                       {/* 불릿/번호 prefix */}
                       {block.type === "bullet" && (
-                        <span className="mt-1 shrink-0 select-none text-sm leading-[1.8] text-zinc-400">•</span>
+                        <span className="mt-1 shrink-0 text-sm leading-[1.8] text-zinc-400">•</span>
                       )}
                       {block.type === "numbered" && (
-                        <span className="mt-1 w-5 shrink-0 select-none text-right text-sm leading-[1.8] text-zinc-400">{numberedIdx}.</span>
+                        <span className="mt-1 w-5 shrink-0 text-right text-sm leading-[1.8] text-zinc-400">{numberedIdx}.</span>
                       )}
                       {block.type === "quote" && (
                         <div className="mt-1 w-0.5 self-stretch shrink-0 rounded-full bg-zinc-300" />
