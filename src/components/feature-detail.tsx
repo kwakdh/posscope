@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { InfiniteCanvas } from "@/components/infinite-canvas";
 import { WireframeCanvas } from "@/components/wireframe-canvas";
@@ -432,69 +432,39 @@ export function FeatureDetail({
 
   if (loading) return <p className="mt-4 text-sm text-zinc-400">불러오는 중...</p>;
 
+  // ── 탭 바 슬롯 (첫 번째 PolicyCard의 헤더 행에 주입) ──────────────────────
+  const tabBarSlot: ReactNode = (
+    <div className="flex shrink-0 items-center gap-0.5 rounded-lg bg-zinc-100 p-0.5">
+      {allTabs.map(tab => (
+        <button key={tab.id} type="button" onClick={() => setActiveTabKind(tab.id)}
+          className={`flex items-center gap-1 rounded-md px-3 py-1 text-xs font-semibold transition-colors ${activeTabKind === tab.id ? "bg-white text-ink shadow-sm" : "text-zinc-500 hover:text-ink"}`}>
+          {tab.name}
+          {!tab.isFixed && activeTabKind === tab.id && canEdit && (
+            <span role="button" onClick={e => { e.stopPropagation(); handleDeleteTab(tab.id); }}
+              className="ml-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full text-[9px] text-zinc-400 hover:bg-red-100 hover:text-red-500">×</span>
+          )}
+        </button>
+      ))}
+      {canEdit && (
+        addingTab ? (
+          <div className="flex items-center gap-1">
+            <input autoFocus value={newTabName} onChange={e => setNewTabName(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") handleAddTab(); if (e.key === "Escape") { setAddingTab(false); setNewTabName(""); } }}
+              placeholder="탭 이름" className="w-20 rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-xs outline-none focus:ring-2 focus:ring-brand/20" />
+            <button type="button" onClick={handleAddTab} className="rounded-md bg-brand px-2 py-0.5 text-xs font-bold text-white hover:bg-brand/90">확인</button>
+            <button type="button" onClick={() => { setAddingTab(false); setNewTabName(""); }} className="rounded-md px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-white">취소</button>
+          </div>
+        ) : (
+          <button type="button" onClick={() => setAddingTab(true)}
+            className="rounded-md px-2.5 py-1 text-xs font-semibold text-zinc-400 hover:bg-white hover:text-ink">+ 추가</button>
+        )
+      )}
+    </div>
+  );
+
   return (
     <div className="mt-4 flex flex-col gap-3">
-      {/* ── 탭 바 — 세그먼트 컨트롤 스타일 ── */}
-      <div className="flex flex-wrap items-center gap-0.5 self-start rounded-lg bg-zinc-100 p-0.5">
-        {allTabs.map(tab => (
-          <button key={tab.id} type="button" onClick={() => setActiveTabKind(tab.id)}
-            className={`flex items-center gap-1 rounded-md px-3 py-1 text-xs font-semibold transition-colors ${activeTabKind === tab.id ? "bg-white text-ink shadow-sm" : "text-zinc-500 hover:text-ink"}`}>
-            {tab.name}
-            {!tab.isFixed && activeTabKind === tab.id && canEdit && (
-              <span role="button" onClick={e => { e.stopPropagation(); handleDeleteTab(tab.id); }}
-                className="ml-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full text-[9px] text-zinc-400 hover:bg-red-100 hover:text-red-500">×</span>
-            )}
-          </button>
-        ))}
-        {canEdit && (
-          addingTab ? (
-            <div className="flex items-center gap-1">
-              <input autoFocus value={newTabName} onChange={e => setNewTabName(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") handleAddTab(); if (e.key === "Escape") { setAddingTab(false); setNewTabName(""); } }}
-                placeholder="탭 이름" className="w-20 rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-xs outline-none focus:ring-2 focus:ring-brand/20" />
-              <button type="button" onClick={handleAddTab} className="rounded-md bg-brand px-2 py-0.5 text-xs font-bold text-white hover:bg-brand/90">확인</button>
-              <button type="button" onClick={() => { setAddingTab(false); setNewTabName(""); }} className="rounded-md px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-white">취소</button>
-            </div>
-          ) : (
-            <button type="button" onClick={() => setAddingTab(true)}
-              className="rounded-md px-2.5 py-1 text-xs font-semibold text-zinc-400 hover:bg-white hover:text-ink">+ 추가</button>
-          )
-        )}
-      </div>
-
-      {/* ── Figma URL 바 (모든 탭 — [현행] 포함, 슬림) ── */}
-      {canEdit && (
-        <div className="flex items-center gap-2 rounded-xl bg-zinc-50 px-3 py-1.5">
-          {editingTabFigmaId === activeTabKind ? (
-            <>
-              <FigmaLogo />
-              <input autoFocus type="url" value={tabFigmaInput} onChange={e => setTabFigmaInput(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") handleSaveTabFigmaUrl(activeTabKind); if (e.key === "Escape") setEditingTabFigmaId(null); }}
-                placeholder="https://www.figma.com/design/..."
-                className="flex-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs outline-none focus:border-brand/40 focus:ring-2 focus:ring-brand/20" />
-              <button type="button" onClick={() => handleSaveTabFigmaUrl(activeTabKind)} className="rounded-lg bg-brand px-3 py-1 text-xs font-bold text-white hover:bg-brand/90">저장</button>
-              <button type="button" onClick={() => setEditingTabFigmaId(null)} className="rounded-lg px-2.5 py-1 text-xs font-bold text-zinc-400 hover:bg-zinc-100">취소</button>
-            </>
-          ) : activeTabMeta.figma_url ? (
-            <>
-              <FigmaLogo />
-              <span className="flex-1 truncate text-xs text-zinc-400">{activeTabMeta.figma_url}</span>
-              <button type="button" onClick={() => { setTabFigmaInput(activeTabMeta.figma_url ?? ""); setEditingTabFigmaId(activeTabKind); }} className="shrink-0 rounded-lg px-2.5 py-1 text-xs font-bold text-zinc-400 hover:bg-zinc-100">편집</button>
-              <button type="button" disabled={bulkImporting} onClick={() => handleBulkImport(activeTabMeta)}
-                className="shrink-0 rounded-lg bg-brand px-3 py-1 text-xs font-bold text-white hover:bg-brand/90 disabled:opacity-50">
-                {bulkImporting ? "불러오는 중..." : "전체 불러오기"}
-              </button>
-            </>
-          ) : (
-            <button type="button" onClick={() => { setTabFigmaInput(""); setEditingTabFigmaId(activeTabKind); }}
-              className="flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-brand">
-              <FigmaLogo />피그마 URL 연결하기
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* ── 피그마 진행률 바 ── */}
+      {/* ── 피그마 일괄 불러오기 진행률 ── */}
       {bulkImporting && <ProgressBar progress={bulkProgress} label={bulkLabel || "불러오는 중..."} />}
       {bulkError && <p className="px-1 text-xs text-red-500">{bulkError}</p>}
 
@@ -503,7 +473,7 @@ export function FeatureDetail({
         {displayPolicies.length === 0 && !bulkImporting && (
           <p className="px-1 text-sm text-zinc-400">섹션이 없습니다. 아래 버튼으로 추가하거나 피그마에서 불러오세요.</p>
         )}
-        {displayPolicies.map(policy => (
+        {displayPolicies.map((policy, pIdx) => (
           <PolicyCard
             key={policy.id || "empty"}
             policy={policy}
@@ -511,22 +481,20 @@ export function FeatureDetail({
             itemType={itemType}
             itemId={itemId}
             onSaved={updated => setPolicies(prev => {
-              // UPDATE: id가 일치하는 항목 교체
               if (prev.some(p => p.id && p.id === updated.id)) {
                 return prev.map(p => p.id === updated.id ? updated : p);
               }
-              // INSERT: empty policy(id="")였다가 처음 저장된 경우 → 추가
               const hasEmpty = prev.some(p => !p.id && p.kind === updated.kind && p.item_id === updated.item_id);
               if (hasEmpty) {
                 return prev.map(p => (!p.id && p.kind === updated.kind && p.item_id === updated.item_id) ? updated : p);
               }
-              // prev 자체가 비어 있었던 경우 (emptyPolicy는 state 밖에 있음) → 그냥 추가
               return [...prev, updated];
             })}
             onDelete={canEdit && !!policy.id ? () => handleDeleteSection(policy.id) : undefined}
             onAddDraft={draft => setPolicies(prev => [...prev, draft])}
             currentUserName={currentUserName}
             canEdit={canEdit}
+            tabBarSlot={pIdx === 0 ? tabBarSlot : undefined}
           />
         ))}
         {canEdit && (
@@ -544,12 +512,12 @@ export function FeatureDetail({
 // PolicyCard
 // ──────────────────────────────────────────────────────────────────────────────
 
-function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAddDraft, currentUserName, canEdit }: {
+function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAddDraft, currentUserName, canEdit, tabBarSlot }: {
   policy: Policy; tabName: string; itemType: ItemType; itemId: string;
   onSaved: (p: Policy) => void;
   onDelete?: () => void;
   onAddDraft?: (p: Policy) => void;
-  currentUserName: string; canEdit: boolean;
+  currentUserName: string; canEdit: boolean; tabBarSlot?: ReactNode;
 }) {
   const [title, setTitle] = useState(policy.title);
   const [mode, setMode] = useState<PolicyMode>(policy.mode);
@@ -1059,42 +1027,83 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
     return () => window.removeEventListener("message", onMsg);
   }, [aiScreens]);
 
+  // ── Ctrl+V 전역 클립보드 붙여넣기 (canvas 모드, canEdit) ──────────────
+  const wireframesRef2 = useRef(wireframes);
+  useEffect(() => { wireframesRef2.current = wireframes; }, [wireframes]);
+
+  useEffect(() => {
+    if (mode !== "canvas" || !canEdit) return;
+    function onPaste(e: ClipboardEvent) {
+      const tgt = e.target as HTMLElement;
+      // 텍스트 편집 중인 경우 무시
+      if (tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA" || tgt.isContentEditable) return;
+      const file = Array.from(e.clipboardData?.items ?? [])
+        .find(item => item.type.startsWith("image/"))
+        ?.getAsFile();
+      if (!file) return;
+      e.preventDefault();
+      const current = wireframesRef2.current;
+      if (current.length === 0) {
+        // 빈 캔버스 → 새 와이어프레임 생성
+        handleUpload(crypto.randomUUID(), file);
+      } else {
+        // 기존 첫 번째 메인 와이어프레임에 덮어쓰기
+        const firstMain = current.find(w => !w.isModal);
+        if (firstMain) handleUpload(firstMain.id, file);
+      }
+    }
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [mode, canEdit]);
+
   return (
     <div className="flex flex-col gap-2">
-      {/* ── 카드 헤더 — 단일 flex-row: 버전배지 + 제목 + 작성자 + 저장버튼 + 삭제 ── */}
-      <div className="flex items-center gap-2 px-1">
+      {/* ── 통합 헤더 행: [탭바] | [v배지] [제목] [📁시안|✨AI] [저장] [삭제] ── */}
+      <div className="flex items-center gap-1.5 px-1 flex-nowrap overflow-x-auto">
+        {/* 탭 바 슬롯 (첫 번째 섹션에만 주입) */}
+        {tabBarSlot && (
+          <>
+            {tabBarSlot}
+            <div className="mx-0.5 h-4 w-px shrink-0 bg-zinc-200" />
+          </>
+        )}
+
+        {/* 버전 배지 */}
         <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${versionBadgeStyle}`}>
           {VERSION_LABEL}{isLocked ? " 🔒" : ""}
         </span>
+
+        {/* 제목 입력 — flex-1로 여백 차지 */}
         <input value={title} readOnly={!canEdit || isLocked}
           onChange={e => setTitle(e.target.value)}
           onBlur={() => { if (title !== policy.title) persist({ title }); }}
           placeholder="화면 제목을 입력하세요"
           className={`flex-1 min-w-0 rounded-lg px-2.5 py-1 text-sm font-bold text-ink outline-none placeholder:font-normal placeholder:text-zinc-400 transition-colors ${(canEdit && !isLocked) ? "hover:bg-white focus:bg-white focus:ring-2 focus:ring-brand/20" : ""}`} />
-        {(policy.author_name || fmtDate(policy.updated_at)) && (
-          <span className="shrink-0 text-xs text-zinc-400">{[policy.author_name, fmtDate(policy.updated_at)].filter(Boolean).join(" · ")}</span>
-        )}
+
+        {/* 모드 스위처 */}
+        <div className="shrink-0 flex items-center gap-0.5 rounded-lg bg-zinc-100 p-0.5">
+          {([["canvas", "📁 시안"], ["ai", "✨ AI"]] as [PolicyMode, string][]).map(([m, label]) => (
+            <button key={m} type="button"
+              onClick={canEdit ? () => { setMode(m); persist({ mode: m }); } : undefined}
+              className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${mode === m ? "bg-white text-ink shadow-sm" : "text-zinc-500 hover:text-ink"} ${!canEdit ? "pointer-events-none" : ""}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* 저장 / 발행 버튼 */}
         {canEdit && !isLocked && (
           <button type="button" onClick={() => setShowSaveModal(true)}
             disabled={publishing}
             className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold transition-colors disabled:opacity-40 ${isDirty || !policy.id ? "bg-brand text-white hover:bg-brand/90" : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"}`}>
-            {publishing ? "처리 중..." : (isDirty || !policy.id) ? "💾 저장 / 발행" : "✓ 저장됨"}
+            {publishing ? "처리 중..." : (isDirty || !policy.id) ? "💾 저장" : "✓ 저장됨"}
           </button>
         )}
+
+        {/* 삭제 버튼 */}
         {onDelete && !isLocked && (
           <button type="button" onClick={() => setShowDeleteConfirm(true)} className="shrink-0 rounded-full p-1.5 text-zinc-400 hover:bg-red-50 hover:text-red-500">🗑</button>
         )}
-      </div>
-
-      {/* ── 모드 스위처 — px-3 py-1 text-xs ── */}
-      <div className="flex items-center gap-0.5 self-start rounded-lg bg-zinc-100 p-0.5">
-        {([["canvas", "시안 불러오기"], ["ai", "AI 생성"]] as [PolicyMode, string][]).map(([m, label]) => (
-          <button key={m} type="button"
-            onClick={canEdit ? () => { setMode(m); persist({ mode: m }); } : undefined}
-            className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${mode === m ? "bg-white text-ink shadow-sm" : "text-zinc-500 hover:text-ink"} ${!canEdit ? "pointer-events-none" : ""}`}>
-            {label}
-          </button>
-        ))}
       </div>
 
       {/* ── 카드 본문: 무한 캔버스 + 리사이즈 패널 ── */}
@@ -1246,6 +1255,23 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
                 onAIEnhance={canEdit ? handleAIEnhance : undefined}
                 toolMode={canvasToolMode}
                 canEdit={canEdit}
+                onPinRename={canEdit ? (oldPin, newPin) => {
+                  if (oldPin === newPin) return;
+                  setDescGroups(prev => {
+                    const exists = prev.find(g => g.pinNumber === oldPin);
+                    if (!exists) return prev;
+                    if (prev.some(g => g.pinNumber === newPin)) return prev;
+                    return prev
+                      .map(g => g.pinNumber === oldPin ? { ...g, pinNumber: newPin } : g)
+                      .sort((a, b) => {
+                        const aParts = a.pinNumber.split("-").map(Number);
+                        const bParts = b.pinNumber.split("-").map(Number);
+                        const am = aParts[0] ?? 0, as2 = aParts[1] ?? 0;
+                        const bm = bParts[0] ?? 0, bs2 = bParts[1] ?? 0;
+                        return am !== bm ? am - bm : as2 - bs2;
+                      });
+                  });
+                } : undefined}
               />
             )}
           </InfiniteCanvas>

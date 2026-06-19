@@ -25,6 +25,7 @@ type Props = {
   onBadgeClick?: (pin: string) => void;
   onBadgeCreate?: (pin: string) => void;
   onAIEnhance?: (wf: WireframeItem) => void;
+  onPinRename?: (oldPin: string, newPin: string) => void;
   toolMode?: "hand" | "move";
   canEdit: boolean;
 };
@@ -32,7 +33,7 @@ type Props = {
 export function WireframeCanvas({
   wireframes, flowSteps, onWireframesChange, onFlowStepsChange,
   onUpload, activePinNumber, hoveredPinNumber, onBadgeHover, onBadgeClick,
-  onBadgeCreate, onAIEnhance: _onAIEnhance, toolMode, canEdit,
+  onBadgeCreate, onAIEnhance: _onAIEnhance, onPinRename, toolMode, canEdit,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -41,6 +42,7 @@ export function WireframeCanvas({
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
   const [imgLoadedMap, setImgLoadedMap] = useState<Record<string, boolean>>({});
   const [selectedPin, setSelectedPin] = useState<SelectedPin | null>(null);
+  const [editingPinId, setEditingPinId] = useState<SelectedPin | null>(null);
 
   // 항상 최신 wireframes를 참조 (drag closure 용)
   const wireframesRef = useRef(wireframes);
@@ -177,6 +179,19 @@ export function WireframeCanvas({
     }
   }
 
+  // ── 핀 번호 이름 변경 확정 ────────────────────────────────────────────
+  function commitPinRename(wfId: string, badge: BadgeMark, newPin: string) {
+    setEditingPinId(null);
+    const trimmed = newPin.trim();
+    if (!trimmed || trimmed === badge.pinNumber) return;
+    const oldPin = badge.pinNumber;
+    onWireframesChange(wireframesRef.current.map(w => w.id !== wfId ? w : {
+      ...w,
+      badges: w.badges.map(b => b.id !== badge.id ? b : { ...b, pinNumber: trimmed }),
+    }));
+    onPinRename?.(oldPin, trimmed);
+  }
+
   // ── WireframeCard ──────────────────────────────────────────────────────
   function WireframeCard({ wf }: { wf: WireframeItem }) {
     const [menuOpen, setMenuOpen] = useState(false);
@@ -281,10 +296,30 @@ export function WireframeCanvas({
                   setSelectedPin({ wfId: wf.id, badgeId: b.id });
                   onBadgeClick?.(b.pinNumber);
                 }}
-                onMouseDown={e => handlePinMouseDown(wf.id, b, e)}
+                onDoubleClick={e => {
+                  e.stopPropagation();
+                  if (!canEdit) return;
+                  setEditingPinId({ wfId: wf.id, badgeId: b.id });
+                }}
+                onMouseDown={editingPinId?.badgeId === b.id ? undefined : e => handlePinMouseDown(wf.id, b, e)}
                 onContextMenu={e => handlePinContextMenu(wf.id, b, e)}
               >
-                {b.pinNumber}
+                {editingPinId?.wfId === wf.id && editingPinId?.badgeId === b.id ? (
+                  <input
+                    autoFocus
+                    defaultValue={b.pinNumber}
+                    maxLength={6}
+                    className="absolute inset-0 w-full rounded-full bg-transparent text-center font-bold text-white outline-none"
+                    style={{ fontSize: 9 }}
+                    onClick={e => e.stopPropagation()}
+                    onMouseDown={e => e.stopPropagation()}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") { e.preventDefault(); commitPinRename(wf.id, b, (e.target as HTMLInputElement).value); }
+                      if (e.key === "Escape") setEditingPinId(null);
+                    }}
+                    onBlur={e => commitPinRename(wf.id, b, e.target.value)}
+                  />
+                ) : b.pinNumber}
               </div>
             );
           })}
