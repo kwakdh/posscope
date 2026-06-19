@@ -136,6 +136,12 @@ export function InfiniteCanvas({
         {children}
       </div>
 
+      {/* 단축키 가이드 — 상시 노출 */}
+      <div className="pointer-events-none absolute bottom-14 right-3 rounded-lg bg-white/80 px-2.5 py-1.5 text-[10px] leading-relaxed text-zinc-400 shadow-sm backdrop-blur-sm select-none">
+        <span className="font-semibold text-zinc-500">단축키</span>
+        {" · "}V: 선택/이동{" · "}H: 캔버스 패닝{" · "}Space: 임시 패닝
+      </div>
+
       {/* Zoom + Tool HUD */}
       <div className="pointer-events-auto absolute bottom-3 right-3 flex items-center gap-1 rounded-xl bg-white/90 px-3 py-1.5 text-xs shadow-sm backdrop-blur-sm select-none">
         <button

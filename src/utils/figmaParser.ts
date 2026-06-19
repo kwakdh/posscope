@@ -506,42 +506,87 @@ function groupByStickyNotes(
     .sort((a, b) => a.noteBox.y - b.noteBox.y);
 }
 
+// ── 피그마 네이티브 SECTION 노드 감지 ────────────────────────────────────────
+// Figma의 Section(type:"SECTION") 타입 자식 노드를 대분류 단위로 인식한다.
+// Y축 순으로 정렬하여 위에서 아래로 1단 세로 분할.
+
+function findFigmaSectionNodes(root: FigmaNode): { title: string; node: FigmaNode }[] {
+  const found: { title: string; node: FigmaNode }[] = [];
+  for (const child of (root.children ?? [])) {
+    if (child.visible === false) continue;
+    if (child.type === "SECTION") {
+      found.push({ title: child.name, node: child });
+    }
+  }
+  return found.sort((a, b) => (a.node.absoluteBoundingBox?.y ?? 0) - (b.node.absoluteBoundingBox?.y ?? 0));
+}
+
 // ── 메인 엔트리포인트 ─────────────────────────────────────────────────────────
 // 서버에서 받은 rawNode(Figma document node)를 받아 완전한 ParseResult를 반환한다.
 // 이미지 URL 해석은 caller 책임 (별도 /api/figma-images 호출 필요).
+//
+// 섹션 감지 우선순위:
+//   1. 피그마 네이티브 SECTION 노드 (type:"SECTION") → 가장 정확
+//   2. 초록 포스트잇(Green Sticky Note) → 폴백
 
 export function parseFigmaTree(root: FigmaNode): ParseResult {
   const classified = classifyChildren(root);
   const wfNodes = classified.wireframes.filter(w => !isVersionMarkupNode(w));
   const { descNodes, policyNodes, uiNoteNodes, considerNodes } = classified;
 
-  const greenNotes = findGreenStickyNotes(root);
-
   let hasSections = false;
   let sections: ParsedSection[] = [];
 
-  if (greenNotes.length >= 1) {
-    const sectionGroups = groupByStickyNotes(greenNotes, wfNodes, descNodes, policyNodes, uiNoteNodes, considerNodes);
-    if (sectionGroups.length > 0) {
-      hasSections = true;
-      sections = sectionGroups.map(grp => ({
-        sectionTitle: grp.sectionTitle,
-        wireframeFrames: grp.wireframeNodes
-          .filter(wf => !isVersionMarkupNode(wf))
-          .map(wf => ({
-            nodeId: wf.id,
-            name: wf.name,
-            badges: extractBadges(wf, root),
-            isModal: false,
-          })),
-        descriptionGroups: grp.descNodes.flatMap(n => extractDescriptionGroups(n)),
-        policyNote: grp.policyNodes.map(n => extractAllText(n, /^정책$/)).filter(Boolean).join("\n\n"),
-        uiNote: grp.uiNoteNodes.map(n => extractAllText(n, /^(UI\s*참고사항|★\s*UI\s*참고사항)$/i)).filter(Boolean).join("\n\n"),
-        considerationNote: grp.considerNodes.map(n => extractAllText(n, /^(확인|고려사항|★\s*고려사항)$/i)).filter(Boolean).join("\n\n"),
-      }));
+  // ── 1순위: 피그마 네이티브 SECTION 노드로 분할 ──────────────────────────────
+  const nativeSections = findFigmaSectionNodes(root);
+  if (nativeSections.length > 0) {
+    hasSections = true;
+    sections = nativeSections.map(sec => {
+      const secClassified = classifyChildren(sec.node);
+      const secWfNodes = secClassified.wireframes.filter(w => !isVersionMarkupNode(w));
+      return {
+        sectionTitle: sec.title,
+        wireframeFrames: secWfNodes.map(wf => ({
+          nodeId: wf.id,
+          name: wf.name,
+          badges: extractBadges(wf, sec.node),
+          isModal: false,
+        })),
+        descriptionGroups: secClassified.descNodes.flatMap(n => extractDescriptionGroups(n)),
+        policyNote: secClassified.policyNodes.map(n => extractAllText(n, /^정책$/)).filter(Boolean).join("\n\n"),
+        uiNote: secClassified.uiNoteNodes.map(n => extractAllText(n, /^(UI\s*참고사항|★\s*UI\s*참고사항)$/i)).filter(Boolean).join("\n\n"),
+        considerationNote: secClassified.considerNodes.map(n => extractAllText(n, /^(확인|고려사항|★\s*고려사항)$/i)).filter(Boolean).join("\n\n"),
+      };
+    });
+  }
+
+  // ── 2순위: 초록 포스트잇(Green Sticky Note) 기반 섹션 그룹화 ─────────────────
+  if (!hasSections) {
+    const greenNotes = findGreenStickyNotes(root);
+    if (greenNotes.length >= 1) {
+      const sectionGroups = groupByStickyNotes(greenNotes, wfNodes, descNodes, policyNodes, uiNoteNodes, considerNodes);
+      if (sectionGroups.length > 0) {
+        hasSections = true;
+        sections = sectionGroups.map(grp => ({
+          sectionTitle: grp.sectionTitle,
+          wireframeFrames: grp.wireframeNodes
+            .filter(wf => !isVersionMarkupNode(wf))
+            .map(wf => ({
+              nodeId: wf.id,
+              name: wf.name,
+              badges: extractBadges(wf, root),
+              isModal: false,
+            })),
+          descriptionGroups: grp.descNodes.flatMap(n => extractDescriptionGroups(n)),
+          policyNote: grp.policyNodes.map(n => extractAllText(n, /^정책$/)).filter(Boolean).join("\n\n"),
+          uiNote: grp.uiNoteNodes.map(n => extractAllText(n, /^(UI\s*참고사항|★\s*UI\s*참고사항)$/i)).filter(Boolean).join("\n\n"),
+          considerationNote: grp.considerNodes.map(n => extractAllText(n, /^(확인|고려사항|★\s*고려사항)$/i)).filter(Boolean).join("\n\n"),
+        }));
+      }
     }
   }
 
+  // ── 섹션 없는 경우: 플랫 와이어프레임 목록 ────────────────────────────────────
   const rootBox = root.absoluteBoundingBox;
   const modalWfsSet = new Set<string>();
   let flatWfNodes: FigmaNode[] = [];
@@ -564,7 +609,9 @@ export function parseFigmaTree(root: FigmaNode): ParseResult {
   const policyNote = policyNodes.map(n => extractAllText(n, /^정책$/)).filter(Boolean).join("\n\n");
   const uiNote = uiNoteNodes.map(n => extractAllText(n, /^(UI\s*참고사항|★\s*UI\s*참고사항)$/i)).filter(Boolean).join("\n\n");
   const considerationNote = considerNodes.map(n => extractAllText(n, /^(확인|고려사항|★\s*고려사항)$/i)).filter(Boolean).join("\n\n");
-  const tables: TableData[] = [...descNodes, ...policyNodes].flatMap(n => {
+
+  // 섹션이 있을 때는 디스크립션 그룹이 각 섹션에 이미 담겨 있으므로 표를 중복 생성하지 않는다.
+  const tables: TableData[] = hasSections ? [] : [...descNodes, ...policyNodes].flatMap(n => {
     const tbl = detectTable(n); return tbl ? [tbl] : [];
   });
 
