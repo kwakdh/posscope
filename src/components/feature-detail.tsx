@@ -434,10 +434,10 @@ export function FeatureDetail({
 
   // ── 탭 바 슬롯 (첫 번째 PolicyCard의 헤더 행에 주입) ──────────────────────
   const tabBarSlot: ReactNode = (
-    <div className="flex shrink-0 items-center gap-0.5 rounded-lg bg-zinc-100 p-0.5">
+    <div className="flex shrink-0 items-center gap-0.5 rounded-xl bg-zinc-100 p-1">
       {allTabs.map(tab => (
         <button key={tab.id} type="button" onClick={() => setActiveTabKind(tab.id)}
-          className={`flex items-center gap-1 rounded-md px-3 py-1 text-xs font-semibold transition-colors ${activeTabKind === tab.id ? "bg-white text-ink shadow-sm" : "text-zinc-500 hover:text-ink"}`}>
+          className={`flex items-center gap-1 rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors ${activeTabKind === tab.id ? "bg-white text-ink shadow-sm" : "text-zinc-500 hover:text-ink"}`}>
           {tab.name}
           {!tab.isFixed && activeTabKind === tab.id && canEdit && (
             <span role="button" onClick={e => { e.stopPropagation(); handleDeleteTab(tab.id); }}
@@ -1064,12 +1064,12 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
         {tabBarSlot && (
           <>
             {tabBarSlot}
-            <div className="mx-0.5 h-4 w-px shrink-0 bg-zinc-200" />
+            <div className="mx-0.5 h-5 w-px shrink-0 bg-zinc-200" />
           </>
         )}
 
         {/* 버전 배지 */}
-        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${versionBadgeStyle}`}>
+        <span className={`shrink-0 rounded-full px-2.5 py-1 text-sm font-bold ${versionBadgeStyle}`}>
           {VERSION_LABEL}{isLocked ? " 🔒" : ""}
         </span>
 
@@ -1078,14 +1078,14 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
           onChange={e => setTitle(e.target.value)}
           onBlur={() => { if (title !== policy.title) persist({ title }); }}
           placeholder="화면 제목을 입력하세요"
-          className={`flex-1 min-w-0 rounded-lg px-2.5 py-1 text-sm font-bold text-ink outline-none placeholder:font-normal placeholder:text-zinc-400 transition-colors ${(canEdit && !isLocked) ? "hover:bg-white focus:bg-white focus:ring-2 focus:ring-brand/20" : ""}`} />
+          className={`flex-1 min-w-0 rounded-lg px-2.5 py-1.5 text-sm font-bold text-ink outline-none placeholder:font-normal placeholder:text-zinc-400 transition-colors ${(canEdit && !isLocked) ? "hover:bg-white focus:bg-white focus:ring-2 focus:ring-brand/20" : ""}`} />
 
         {/* 모드 스위처 */}
-        <div className="shrink-0 flex items-center gap-0.5 rounded-lg bg-zinc-100 p-0.5">
+        <div className="shrink-0 flex items-center gap-0.5 rounded-xl bg-zinc-100 p-1">
           {([["canvas", "📁 시안"], ["ai", "✨ AI"]] as [PolicyMode, string][]).map(([m, label]) => (
             <button key={m} type="button"
               onClick={canEdit ? () => { setMode(m); persist({ mode: m }); } : undefined}
-              className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${mode === m ? "bg-white text-ink shadow-sm" : "text-zinc-500 hover:text-ink"} ${!canEdit ? "pointer-events-none" : ""}`}>
+              className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${mode === m ? "bg-white text-ink shadow-sm" : "text-zinc-500 hover:text-ink"} ${!canEdit ? "pointer-events-none" : ""}`}>
               {label}
             </button>
           ))}
@@ -1095,14 +1095,14 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
         {canEdit && !isLocked && (
           <button type="button" onClick={() => setShowSaveModal(true)}
             disabled={publishing}
-            className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold transition-colors disabled:opacity-40 ${isDirty || !policy.id ? "bg-brand text-white hover:bg-brand/90" : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"}`}>
+            className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-bold transition-colors disabled:opacity-40 ${isDirty || !policy.id ? "bg-brand text-white hover:bg-brand/90" : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"}`}>
             {publishing ? "처리 중..." : (isDirty || !policy.id) ? "💾 저장" : "✓ 저장됨"}
           </button>
         )}
 
         {/* 삭제 버튼 */}
         {onDelete && !isLocked && (
-          <button type="button" onClick={() => setShowDeleteConfirm(true)} className="shrink-0 rounded-full p-1.5 text-zinc-400 hover:bg-red-50 hover:text-red-500">🗑</button>
+          <button type="button" onClick={() => setShowDeleteConfirm(true)} className="shrink-0 rounded-full p-2 text-zinc-400 hover:bg-red-50 hover:text-red-500">🗑</button>
         )}
       </div>
 
