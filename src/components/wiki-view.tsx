@@ -59,6 +59,7 @@ export function WikiView({
   // 메뉴 상태
   const [menus, setMenus] = useState<WikiMenu[]>([]);
   const [menusLoading, setMenusLoading] = useState(true);
+  const [menusError, setMenusError] = useState<string | null>(null);
   const [selectedMenuId, setSelectedMenuId] = useState<string | null>(null);
 
   // 문서 상태
@@ -94,8 +95,12 @@ export function WikiView({
   useEffect(() => {
     fetch("/api/wiki-menus")
       .then(r => r.json())
-      .then(d => { setMenus(d.menus ?? []); setMenusLoading(false); })
-      .catch(() => setMenusLoading(false));
+      .then(d => {
+        if (d.error) { setMenusError(d.error); }
+        else { setMenus(d.menus ?? []); }
+        setMenusLoading(false);
+      })
+      .catch(e => { setMenusError(String(e)); setMenusLoading(false); });
   }, []);
 
   // ── 문서 로드 ──────────────────────────────────────────────────────────────
@@ -457,8 +462,19 @@ export function WikiView({
 
         {menusLoading ? (
           <p className="px-2 text-xs text-zinc-400">불러오는 중...</p>
+        ) : menusError ? (
+          <div className="rounded-xl bg-red-50 px-3 py-2.5 text-xs text-red-500">
+            <p className="font-bold">테이블 오류</p>
+            <p className="mt-0.5 text-red-400 break-all">{menusError}</p>
+            <p className="mt-2 text-zinc-400">Supabase SQL Editor에서 wiki.ts 주석의 SQL을 실행해 주세요.</p>
+          </div>
         ) : (
           <ul className="flex flex-col gap-0.5">
+            {rootMenus.length === 0 && (
+              <li className="px-2 py-2 text-xs text-zinc-400">
+                메뉴가 없습니다. + 버튼으로 추가하세요.
+              </li>
+            )}
             {rootMenus.map((menu, ri) => {
               const children = menus
                 .filter(m => m.parent_id === menu.id)
