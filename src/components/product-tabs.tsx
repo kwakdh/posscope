@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { FeatureDetail } from "./feature-detail";
+import { WikiView } from "./wiki-view";
 
 type Feature = {
   id: string;
@@ -94,6 +95,7 @@ function flattenLeaves(items: SidebarItem[]): SidebarItem[] {
 
 export function ProductTabs({ products, currentUserName, canEdit }: ProductTabsProps) {
   const [activeSlug, setActiveSlug] = useState(products[0]?.slug ?? "");
+  const isWiki = activeSlug === "__wiki__";
   const active = products.find((p) => p.slug === activeSlug);
 
   const sidebarItems = active ? buildSidebarItems(active.categories) : [];
@@ -119,6 +121,7 @@ export function ProductTabs({ products, currentUserName, canEdit }: ProductTabsP
 
   function handleSelectProduct(slug: string) {
     setActiveSlug(slug);
+    if (slug === "__wiki__") return; // 위키는 자체 상태 관리
     const items = buildSidebarItems(products.find((p) => p.slug === slug)?.categories ?? []);
     setSelectedId(flattenLeaves(items)[0]?.id ?? null);
     setExpandedIds(new Set(items.filter((item) => item.children).map((item) => item.id)));
@@ -141,11 +144,23 @@ export function ProductTabs({ products, currentUserName, canEdit }: ProductTabsP
               {product.name}
             </button>
           ))}
+          {/* 위키 탭 — 기존 product 탭 뒤에 추가 */}
+          <button
+            onClick={() => handleSelectProduct("__wiki__")}
+            className={`rounded-full px-5 py-2 text-sm font-bold transition-colors ${
+              isWiki ? "bg-white text-ink shadow-sm" : "text-ink-muted hover:text-ink"
+            }`}
+          >
+            📄 위키
+          </button>
         </div>
       </nav>
 
       <div className="flex flex-1 gap-3 overflow-hidden bg-surface p-3">
-        {sidebarItems.length === 0 ? (
+        {/* 위키 탭 활성 시 WikiView 렌더링 (기존 레이아웃 완전 보존) */}
+        {isWiki ? (
+          <WikiView canEdit={canEdit} currentUserName={currentUserName} />
+        ) : sidebarItems.length === 0 ? (
           <main className="flex flex-1 items-center justify-center rounded-3xl bg-white text-ink-muted">
             아직 등록된 기능 메뉴가 없습니다.
           </main>
