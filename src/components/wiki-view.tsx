@@ -629,26 +629,7 @@ export function WikiView({
                           />
                         </li>
                       )}
-                      {canEdit && addingChildOf !== menu.id && (
-                        <li>
-                          <button
-                            onClick={() => { setAddingChildOf(menu.id); setAddingTitle(""); }}
-                            className="w-full rounded-xl px-2.5 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-50 hover:text-brand transition-colors"
-                          >
-                            ＋ 하위 문서
-                          </button>
-                        </li>
-                      )}
                     </ul>
-                  )}
-                  {/* 하위 없는 메뉴의 "하위 추가" 버튼 */}
-                  {children.length === 0 && addingChildOf !== menu.id && canEdit && (
-                    <button
-                      onClick={() => { setAddingChildOf(menu.id); setAddingTitle(""); }}
-                      className="ml-5 mt-0.5 block rounded-xl px-2.5 py-1 text-left text-xs text-zinc-300 hover:bg-zinc-50 hover:text-brand transition-colors"
-                    >
-                      ＋ 하위 문서
-                    </button>
                   )}
                 </li>
               );
@@ -871,13 +852,40 @@ export function WikiView({
           )}
         </main>
       ) : (
-        <main className="flex flex-1 flex-col items-center justify-center rounded-3xl bg-white text-center">
-          <span className="text-5xl">📄</span>
-          <p className="mt-3 text-sm text-zinc-400">
-            좌측에서 문서를 선택하거나
-            <br />
-            {canEdit && "＋ 버튼으로 새 문서를 추가하세요."}
-          </p>
+        <main className="flex flex-1 items-center justify-center overflow-y-auto rounded-3xl bg-white p-8">
+          <div className="mx-auto w-full max-w-md">
+            {/* 아이콘 + 타이틀 */}
+            <div className="mb-8 text-center">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/10 text-[1.75rem]">
+                📚
+              </div>
+              <h2 className="text-xl font-bold text-ink">정책 위키</h2>
+              <p className="mt-1 text-sm text-zinc-400">KCP POS 서비스 비즈니스 정책 통합 관리</p>
+            </div>
+
+            {/* 안내 콜아웃 */}
+            <div className="rounded-2xl bg-zinc-50 px-6 py-5">
+              <p className="text-sm leading-[1.85] text-zinc-600">
+                포스/베리포스의 전체적인 비즈니스 코어 정책을 총괄하여 한눈에 관리하고 사내 구성원이 협업하여 편집하는 위키 공간입니다.
+              </p>
+              <div className="mt-5 flex flex-col gap-3.5">
+                {([
+                  ["🔗", "피그마 URL 연동 시 AI가 정책을 위키 형식으로 자동 정리"],
+                  ["📝", "수정 시 작성자·날짜·버전 이력이 투명하게 기록"],
+                  ["📂", "좌측 메뉴는 자유롭게 추가, 삭제, 순서 변경 가능"],
+                ] as [string, string][]).map(([icon, text]) => (
+                  <div key={text} className="flex items-start gap-3">
+                    <span className="mt-0.5 shrink-0 text-base leading-none">{icon}</span>
+                    <span className="text-sm leading-relaxed text-zinc-500">{text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <p className="mt-6 text-center text-xs text-zinc-400">
+              좌측 메뉴에서 문서를 선택하거나{canEdit ? " + 버튼으로 새 문서를 추가하세요." : " 문서를 선택하세요."}
+            </p>
+          </div>
         </main>
       )}
     </div>
