@@ -9,6 +9,21 @@ type WFeature = { id: string; name: string; status: string };
 type WCategory = { id: string; name: string; features: WFeature[] };
 type WProduct = { slug: string; name: string; categories: WCategory[] };
 
+type WikiBlockComment = {
+  id: string;
+  doc_id: string;
+  block_id: string;
+  content: string;
+  author_name: string | null;
+  mentions: string[];
+  created_at: string;
+};
+
+type DiffItem =
+  | { kind: "same"; block: Block }
+  | { kind: "removed"; block: Block }
+  | { kind: "added"; block: Block };
+
 // ── 슬래시 커맨드 목록 ────────────────────────────────────────────────────────
 
 const SLASH_COMMANDS: { type: BlockType; icon: string; label: string; desc: string }[] = [
@@ -45,6 +60,60 @@ const BLOCK_TEXT_CLS: Partial<Record<BlockType, string>> = {
   quote:     "text-sm text-ink-muted italic leading-relaxed",
   callout:   "text-sm text-ink leading-[1.8]",
 };
+
+// ── Diff 계산 (LCS 기반) ────────────────────────────────────────────────────
+
+function computeDiff(oldBlocks: Block[], newBlocks: Block[]): DiffItem[] {
+  const n = oldBlocks.length, m = newBlocks.length;
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      if (oldBlocks[i - 1].type === newBlocks[j - 1].type && oldBlocks[i - 1].content === newBlocks[j - 1].content) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+  const result: DiffItem[] = [];
+  let i = n, j = m;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && oldBlocks[i - 1].type === newBlocks[j - 1].type && oldBlocks[i - 1].content === newBlocks[j - 1].content) {
+      result.unshift({ kind: "same", block: newBlocks[j - 1] }); i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      result.unshift({ kind: "added", block: newBlocks[j - 1] }); j--;
+    } else {
+      result.unshift({ kind: "removed", block: oldBlocks[i - 1] }); i--;
+    }
+  }
+  return result;
+}
+
+// ── 태그 컬러 유틸 ───────────────────────────────────────────────────────────
+
+const TAG_COLOR_CLASSES = [
+  "bg-blue-100 text-blue-700 border-blue-200",
+  "bg-green-100 text-green-700 border-green-200",
+  "bg-purple-100 text-purple-700 border-purple-200",
+  "bg-orange-100 text-orange-700 border-orange-200",
+  "bg-pink-100 text-pink-700 border-pink-200",
+  "bg-teal-100 text-teal-700 border-teal-200",
+  "bg-amber-100 text-amber-700 border-amber-200",
+  "bg-indigo-100 text-indigo-700 border-indigo-200",
+];
+
+function getTagColor(tag: string): string {
+  let hash = 0;
+  for (const c of tag) hash = (hash * 31 + c.charCodeAt(0)) | 0;
+  return TAG_COLOR_CLASSES[Math.abs(hash) % TAG_COLOR_CLASSES.length];
+}
+
+// ── @멘션 추출 ────────────────────────────────────────────────────────────────
+
+function extractMentions(text: string): string[] {
+  const matches = text.match(/@[\w가-힣]+/g) ?? [];
+  return [...new Set(matches)];
+}
 
 // ── 버전 태그 제거 유틸 ──────────────────────────────────────────────────────
 // 피그마 텍스트 내 "(v0.1 수정)", "v0.2 변경" 등 버전 표딱지를 완전히 제거한다.
@@ -181,6 +250,27 @@ export function WikiView({
   const [editingTitle, setEditingTitle] = useState("");
   const [addingChildOf, setAddingChildOf] = useState<string | null>(null);
   const [addingTitle, setAddingTitle] = useState("");
+
+  // 검색 상태
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Diff 뷰어 상태
+  const [diffPending, setDiffPending] = useState<{
+    oldBlocks: Block[];
+    newBlocks: Block[];
+    newTitle: string;
+    importedUrl: string;
+  } | null>(null);
+
+  // 블록 댓글 상태
+  const [openCommentBlockId, setOpenCommentBlockId] = useState<string | null>(null);
+  const [blockComments, setBlockComments] = useState<Record<string, WikiBlockComment[]>>({});
+  const [commentText, setCommentText] = useState("");
+  const [commentPosting, setCommentPosting] = useState(false);
+
+  // 태그 상태
+  const [addingTagBlockId, setAddingTagBlockId] = useState<string | null>(null);
+  const [newTagText, setNewTagText] = useState("");
 
   // ── 메뉴 로드 ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -451,29 +541,34 @@ export function WikiView({
       const importedUrl = (overrideUrl ?? figmaUrl).trim();
       setShowFigmaModal(false); setFigmaUrl("");
       if (finalBlocks.length > 0) {
-        setBlocks(finalBlocks); setIsDirty(true);
-        setSavedFigmaUrl(importedUrl);
-        // 상태 업데이트 전에 computed 값으로 직접 저장
-        if (doc) {
-          setSaving(true);
-          try {
-            const saveRes = await fetch(`/api/wiki-docs/${doc.id}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ title: newTitle, blocks: finalBlocks, authorName: currentUserName, figmaUrl: importedUrl }),
-            });
-            if (saveRes.ok) {
-              const { doc: updated } = await saveRes.json();
-              if (updated) initDoc({ ...doc, ...updated });
-              if (selectedMenuId) {
-                setMenus(prev => prev.map(m => m.id === selectedMenuId ? { ...m, title: newTitle } : m));
+        // 기존 콘텐츠가 있으면 Diff 모달 표시, 없으면 직접 적용
+        const hasContent = blocks.some(b => b.type !== "paragraph" || b.content.trim() !== "");
+        if (hasContent) {
+          setDiffPending({ oldBlocks: blocks, newBlocks: finalBlocks, newTitle, importedUrl });
+        } else {
+          setBlocks(finalBlocks); setIsDirty(true);
+          setSavedFigmaUrl(importedUrl);
+          if (doc) {
+            setSaving(true);
+            try {
+              const saveRes = await fetch(`/api/wiki-docs/${doc.id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ title: newTitle, blocks: finalBlocks, authorName: currentUserName, figmaUrl: importedUrl }),
+              });
+              if (saveRes.ok) {
+                const { doc: updated } = await saveRes.json();
+                if (updated) initDoc({ ...doc, ...updated });
+                if (selectedMenuId) {
+                  setMenus(prev => prev.map(m => m.id === selectedMenuId ? { ...m, title: newTitle } : m));
+                }
               }
+            } finally {
+              setSaving(false);
             }
-          } finally {
-            setSaving(false);
           }
+          showToast("AI가 피그마 내용을 구조화했습니다.");
         }
-        showToast("AI가 피그마 내용을 구조화했습니다.");
       } else {
         showToast("가져올 텍스트 콘텐츠를 찾지 못했습니다.");
       }
@@ -640,6 +735,104 @@ export function WikiView({
     }
   }
 
+  // ── 댓글 패널 열기/닫기 + 로드 ────────────────────────────────────────────
+  async function toggleCommentPanel(blockId: string) {
+    if (openCommentBlockId === blockId) {
+      setOpenCommentBlockId(null);
+      return;
+    }
+    setOpenCommentBlockId(blockId);
+    setCommentText("");
+    if (blockComments[blockId] !== undefined || !doc) return;
+    try {
+      const res = await fetch(`/api/wiki-block-comments?docId=${doc.id}&blockId=${blockId}`);
+      const { comments } = await res.json() as { comments?: WikiBlockComment[] };
+      setBlockComments(prev => ({ ...prev, [blockId]: comments ?? [] }));
+    } catch {
+      setBlockComments(prev => ({ ...prev, [blockId]: [] }));
+    }
+  }
+
+  async function handlePostComment(blockId: string) {
+    if (!commentText.trim() || !doc || commentPosting) return;
+    setCommentPosting(true);
+    try {
+      const res = await fetch("/api/wiki-block-comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          docId: doc.id, blockId,
+          content: commentText,
+          authorName: currentUserName,
+          mentions: extractMentions(commentText),
+        }),
+      });
+      const { comment } = await res.json() as { comment?: WikiBlockComment };
+      if (comment) {
+        setBlockComments(prev => ({ ...prev, [blockId]: [...(prev[blockId] ?? []), comment] }));
+        setCommentText("");
+      }
+    } finally {
+      setCommentPosting(false);
+    }
+  }
+
+  async function handleDeleteComment(blockId: string, commentId: string) {
+    await fetch(`/api/wiki-block-comments/${commentId}`, { method: "DELETE" });
+    setBlockComments(prev => ({
+      ...prev,
+      [blockId]: (prev[blockId] ?? []).filter(c => c.id !== commentId),
+    }));
+  }
+
+  // ── 태그 편집 ──────────────────────────────────────────────────────────────
+  function addTag(blockId: string, tag: string) {
+    const trimmed = tag.trim();
+    if (!trimmed) { setAddingTagBlockId(null); setNewTagText(""); return; }
+    setBlocks(prev => prev.map(b =>
+      b.id === blockId ? { ...b, tags: [...new Set([...(b.tags ?? []), trimmed])] } : b
+    ));
+    setAddingTagBlockId(null);
+    setNewTagText("");
+    setIsDirty(true);
+  }
+
+  function removeTag(blockId: string, tag: string) {
+    setBlocks(prev => prev.map(b =>
+      b.id === blockId ? { ...b, tags: (b.tags ?? []).filter(t => t !== tag) } : b
+    ));
+    setIsDirty(true);
+  }
+
+  // ── Diff 적용 및 저장 ────────────────────────────────────────────────────
+  async function applyDiffAndSave() {
+    if (!diffPending || !doc) return;
+    const { newBlocks, newTitle, importedUrl } = diffPending;
+    setDiffPending(null);
+    setBlocks(newBlocks);
+    setTitle(newTitle);
+    setSavedFigmaUrl(importedUrl);
+    setIsDirty(true);
+    setSaving(true);
+    try {
+      const saveRes = await fetch(`/api/wiki-docs/${doc.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newTitle, blocks: newBlocks, authorName: currentUserName, figmaUrl: importedUrl }),
+      });
+      if (saveRes.ok) {
+        const { doc: updated } = await saveRes.json();
+        if (updated) initDoc({ ...doc, ...updated });
+        if (selectedMenuId) {
+          setMenus(prev => prev.map(m => m.id === selectedMenuId ? { ...m, title: newTitle } : m));
+        }
+      }
+    } finally {
+      setSaving(false);
+    }
+    showToast("피그마 내용이 업데이트되었습니다 ✓");
+  }
+
   // ── 블록 편집 ──────────────────────────────────────────────────────────────
   function updateBlock(id: string, patch: Partial<Block>) {
     setBlocks(prev => prev.map(b => b.id === id ? { ...b, ...patch } : b));
@@ -727,12 +920,20 @@ export function WikiView({
 
   const rootMenus = menus.filter(m => !m.parent_id).sort((a, b) => a.sort_order - b.sort_order);
 
+  const filteredRootMenus = searchQuery.trim()
+    ? rootMenus.filter(menu => {
+        const q = searchQuery.toLowerCase();
+        if (menu.title.toLowerCase().includes(q)) return true;
+        return menus.some(m => m.parent_id === menu.id && m.title.toLowerCase().includes(q));
+      })
+    : rootMenus;
+
   return (
     <div className="flex flex-1 gap-3 overflow-hidden">
 
       {/* ── 위키 LNB ── */}
       <aside className="flex w-56 shrink-0 flex-col overflow-y-auto rounded-3xl bg-white px-3 py-5">
-        <div className="mb-3 flex items-center justify-between px-2">
+        <div className="mb-2 flex items-center justify-between px-2">
           <span className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">위키</span>
           <div className="flex items-center gap-1">
             {canEdit && products.length > 0 && (
@@ -760,6 +961,17 @@ export function WikiView({
           </div>
         </div>
 
+        {/* LNB 키워드 검색 */}
+        <div className="mb-3 px-1">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="문서 검색..."
+            className="w-full rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-1.5 text-xs outline-none placeholder:text-zinc-300 focus:border-brand/30 focus:bg-white focus:ring-1 focus:ring-brand/20 transition-all"
+          />
+        </div>
+
         {menusLoading ? (
           <p className="px-2 text-xs text-zinc-400">불러오는 중...</p>
         ) : menusError ? (
@@ -770,9 +982,11 @@ export function WikiView({
           </div>
         ) : (
           <ul className="flex flex-col gap-0.5">
-            {rootMenus.length === 0 && !syncing && (
+            {filteredRootMenus.length === 0 && !syncing && (
               <li className="px-1 py-2">
-                {canEdit && products.length > 0 ? (
+                {searchQuery.trim() ? (
+                  <p className="px-1 text-xs text-zinc-400">"{searchQuery}"에 대한 결과 없음</p>
+                ) : canEdit && products.length > 0 ? (
                   <div className="flex flex-col gap-2 rounded-2xl bg-brand/5 p-3">
                     <p className="text-xs font-bold text-brand">포스앱 메뉴로 시작하기</p>
                     <p className="text-[11px] leading-relaxed text-zinc-400">
@@ -795,10 +1009,13 @@ export function WikiView({
             {syncing && (
               <li className="px-2 py-2 text-xs text-zinc-400">메뉴 동기화 중...</li>
             )}
-            {rootMenus.map((menu, ri) => {
+            {filteredRootMenus.map((menu, ri) => {
+              const q = searchQuery.toLowerCase();
+              const rootMatchesSearch = !searchQuery.trim() || menu.title.toLowerCase().includes(q);
               const children = menus
                 .filter(m => m.parent_id === menu.id)
-                .sort((a, b) => a.sort_order - b.sort_order);
+                .sort((a, b) => a.sort_order - b.sort_order)
+                .filter(c => !searchQuery.trim() || rootMatchesSearch || c.title.toLowerCase().includes(q));
               const isSel = selectedMenuId === menu.id;
               const isEdit = editingMenuId === menu.id;
 
@@ -947,14 +1164,6 @@ export function WikiView({
                   </>
                 )}
                 <div className="ml-auto flex flex-wrap items-center gap-2">
-                  {/* 전체 복사 버튼 — 항상 표시 */}
-                  <button
-                    onClick={handleCopyAll}
-                    className="rounded-lg px-3 py-1.5 text-xs font-bold text-zinc-500 border border-zinc-200 hover:border-zinc-400 hover:text-zinc-700 transition-colors"
-                    title="전체 블록 내용을 클립보드에 복사"
-                  >
-                    📋 전체 복사
-                  </button>
                   {canEdit && savedFigmaUrl ? (
                     /* ── 피그마 연동 후: 3버튼 그룹 ── */
                     <>
@@ -1053,46 +1262,168 @@ export function WikiView({
                   }
 
                   return (
-                    <div key={block.id} className="group relative flex items-start gap-1.5">
-                      {/* 드래그 핸들 */}
-                      {canEdit && (
-                        <span className="mt-1.5 shrink-0 cursor-grab select-none text-[13px] text-zinc-200 opacity-0 transition-opacity group-hover:opacity-100 hover:text-zinc-400">
-                          ⠿
-                        </span>
-                      )}
-
-                      {/* 불릿/번호 prefix */}
-                      {block.type === "bullet" && (
-                        <span className="mt-1 shrink-0 text-sm leading-[1.8] text-zinc-400">•</span>
-                      )}
-                      {block.type === "numbered" && (
-                        <span className="mt-1 w-5 shrink-0 text-right text-sm leading-[1.8] text-zinc-400">{numberedIdx}.</span>
-                      )}
-                      {block.type === "quote" && (
-                        <div className="mt-1 w-0.5 self-stretch shrink-0 rounded-full bg-zinc-300" />
-                      )}
-
-                      {/* 블록 컨텐츠 */}
-                      <div className={`relative min-w-0 flex-1 ${block.type === "callout" ? "rounded-xl border border-amber-200 bg-amber-50 px-4 py-3" : ""}`}>
-                        {block.type === "callout" && <span className="mr-2 select-none">💡</span>}
-                        <BlockTextarea
-                          block={block}
-                          blockIndex={bi}
-                          canEdit={canEdit}
-                          blockRefs={blockRefs}
-                          onChange={v => handleBlockChange(block, v)}
-                          onKeyDown={e => handleBlockKeyDown(block, e, bi)}
-                        />
-
-                        {/* 슬래시 커맨드 드롭다운 */}
-                        {slashCmds.length > 0 && (
-                          <SlashMenu
-                            commands={slashCmds}
-                            onSelect={type => convertBlock(block.id, type)}
-                            onClose={() => setSlashState(null)}
-                          />
+                    <div key={block.id} className="group/block relative">
+                      {/* 블록 메인 행 */}
+                      <div className="group relative flex items-start gap-1.5">
+                        {/* 드래그 핸들 */}
+                        {canEdit && (
+                          <span className="mt-1.5 shrink-0 cursor-grab select-none text-[13px] text-zinc-200 opacity-0 transition-opacity group-hover:opacity-100 hover:text-zinc-400">
+                            ⠿
+                          </span>
                         )}
+
+                        {/* 불릿/번호 prefix */}
+                        {block.type === "bullet" && (
+                          <span className="mt-1 shrink-0 text-sm leading-[1.8] text-zinc-400">•</span>
+                        )}
+                        {block.type === "numbered" && (
+                          <span className="mt-1 w-5 shrink-0 text-right text-sm leading-[1.8] text-zinc-400">{numberedIdx}.</span>
+                        )}
+                        {block.type === "quote" && (
+                          <div className="mt-1 w-0.5 self-stretch shrink-0 rounded-full bg-zinc-300" />
+                        )}
+
+                        {/* 블록 컨텐츠 */}
+                        <div className={`relative min-w-0 flex-1 ${block.type === "callout" ? "rounded-xl border border-amber-200 bg-amber-50 px-4 py-3" : ""}`}>
+                          {block.type === "callout" && <span className="mr-2 select-none">💡</span>}
+                          <BlockTextarea
+                            block={block}
+                            blockIndex={bi}
+                            canEdit={canEdit}
+                            blockRefs={blockRefs}
+                            onChange={v => handleBlockChange(block, v)}
+                            onKeyDown={e => handleBlockKeyDown(block, e, bi)}
+                          />
+
+                          {/* 슬래시 커맨드 드롭다운 */}
+                          {slashCmds.length > 0 && (
+                            <SlashMenu
+                              commands={slashCmds}
+                              onSelect={type => convertBlock(block.id, type)}
+                              onClose={() => setSlashState(null)}
+                            />
+                          )}
+                        </div>
+
+                        {/* 댓글 아이콘 */}
+                        <button
+                          onClick={() => toggleCommentPanel(block.id)}
+                          className={`mt-1 shrink-0 rounded-md p-1 text-[13px] transition-all opacity-0 group-hover:opacity-100 ${
+                            openCommentBlockId === block.id
+                              ? "bg-brand/10 text-brand opacity-100"
+                              : "text-zinc-300 hover:bg-zinc-100 hover:text-zinc-500"
+                          }`}
+                          title="댓글"
+                        >
+                          💬
+                        </button>
                       </div>
+
+                      {/* 태그 배지 행 */}
+                      {((block.tags?.length ?? 0) > 0 || addingTagBlockId === block.id) ? (
+                        <div className="ml-7 flex flex-wrap items-center gap-1.5 pb-1 pt-0.5">
+                          {(block.tags ?? []).map(tag => (
+                            <span key={tag} className={`group/tag inline-flex items-center gap-0.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${getTagColor(tag)}`}>
+                              {tag}
+                              {canEdit && (
+                                <button
+                                  onClick={() => removeTag(block.id, tag)}
+                                  className="ml-0.5 text-[10px] leading-none opacity-0 transition-opacity group-hover/tag:opacity-100"
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </span>
+                          ))}
+                          {canEdit && (addingTagBlockId === block.id ? (
+                            <input
+                              autoFocus
+                              value={newTagText}
+                              onChange={e => setNewTagText(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === "Enter") addTag(block.id, newTagText);
+                                if (e.key === "Escape") { setAddingTagBlockId(null); setNewTagText(""); }
+                              }}
+                              onBlur={() => { if (newTagText.trim()) addTag(block.id, newTagText); else { setAddingTagBlockId(null); setNewTagText(""); }}}
+                              placeholder="태그..."
+                              className="rounded-full border border-zinc-300 px-2.5 py-0.5 text-xs outline-none focus:border-brand/40 w-20"
+                            />
+                          ) : (
+                            <button
+                              onClick={() => { setAddingTagBlockId(block.id); setNewTagText(""); }}
+                              className="rounded-full border border-dashed border-zinc-300 px-2 py-0.5 text-[11px] text-zinc-400 opacity-0 transition-opacity group-hover/block:opacity-100 hover:border-zinc-400 hover:text-zinc-500"
+                            >
+                              + 태그
+                            </button>
+                          ))}
+                        </div>
+                      ) : canEdit ? (
+                        <div className="ml-7 pb-0.5 opacity-0 transition-opacity group-hover/block:opacity-100">
+                          <button
+                            onClick={() => { setAddingTagBlockId(block.id); setNewTagText(""); }}
+                            className="rounded-full border border-dashed border-zinc-300 px-2 py-0.5 text-[11px] text-zinc-400 hover:border-zinc-400 hover:text-zinc-500"
+                          >
+                            + 태그
+                          </button>
+                        </div>
+                      ) : null}
+
+                      {/* 인라인 댓글 패널 */}
+                      {openCommentBlockId === block.id && (
+                        <div className="ml-7 mb-3 mt-1 rounded-2xl border border-zinc-100 bg-zinc-50 px-4 py-4">
+                          <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-zinc-400">댓글</p>
+
+                          {/* 댓글 목록 */}
+                          <div className="mb-4 flex flex-col gap-3">
+                            {(blockComments[block.id] ?? []).length === 0 ? (
+                              <p className="text-xs text-zinc-400">아직 댓글이 없습니다.</p>
+                            ) : (
+                              (blockComments[block.id] ?? []).map(comment => (
+                                <div key={comment.id} className="group/comment flex items-start gap-2.5">
+                                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand/20 text-xs font-bold text-brand">
+                                    {(comment.author_name ?? "?")[0].toUpperCase()}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-baseline gap-1.5">
+                                      <span className="text-xs font-bold text-ink">{comment.author_name ?? "익명"}</span>
+                                      <span className="text-[10px] text-zinc-400">
+                                        {new Date(comment.created_at).toLocaleDateString("ko-KR")}
+                                      </span>
+                                    </div>
+                                    <p className="mt-0.5 text-sm leading-relaxed text-zinc-600 whitespace-pre-wrap">{comment.content}</p>
+                                  </div>
+                                  <button
+                                    onClick={() => handleDeleteComment(block.id, comment.id)}
+                                    className="text-[10px] text-zinc-300 opacity-0 transition-opacity group-hover/comment:opacity-100 hover:text-red-400"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              ))
+                            )}
+                          </div>
+
+                          {/* 댓글 입력 */}
+                          {canEdit && (
+                            <div className="flex gap-2">
+                              <input
+                                value={commentText}
+                                onChange={e => setCommentText(e.target.value)}
+                                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handlePostComment(block.id); }}}
+                                placeholder="댓글 추가... @멘션 가능"
+                                className="flex-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand/40 focus:ring-1 focus:ring-brand/20"
+                              />
+                              <button
+                                onClick={() => handlePostComment(block.id)}
+                                disabled={commentPosting || !commentText.trim()}
+                                className="rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white hover:bg-brand/90 disabled:opacity-40 transition-colors"
+                              >
+                                {commentPosting ? "..." : "게시"}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1144,6 +1475,55 @@ export function WikiView({
                     disabled={figmaImporting || aiStructuring || !figmaUrl.trim()}
                     className="flex-1 rounded-xl bg-brand py-2.5 text-sm font-bold text-white hover:bg-brand/90 disabled:opacity-40 transition-colors">
                     {aiStructuring ? "AI 구조화 중..." : figmaImporting ? "가져오는 중..." : "가져오기"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Diff 뷰어 모달 — 다시 가져오기 시 변경 미리보기 */}
+          {diffPending && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm px-4">
+              <div className="flex w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl" style={{ maxHeight: "80vh" }}>
+                <div className="border-b border-zinc-100 px-6 pt-6 pb-4">
+                  <h3 className="text-lg font-bold text-ink">🔄 피그마 내용 미리보기</h3>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    현재 문서를 피그마 최신 내용으로 교체합니다. 아래 변경 사항을 확인하세요.
+                    <span className="ml-2 inline-flex gap-2 text-[11px]">
+                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700">추가</span>
+                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-500">삭제</span>
+                    </span>
+                  </p>
+                </div>
+                <div className="flex-1 overflow-y-auto px-6 py-4">
+                  {computeDiff(diffPending.oldBlocks, diffPending.newBlocks).map((item, di) => (
+                    <div key={di} className={`mb-1 rounded-lg px-3 py-1.5 ${
+                      item.kind === "added" ? "border-l-2 border-green-400 bg-green-50" :
+                      item.kind === "removed" ? "border-l-2 border-red-300 bg-red-50" : ""
+                    }`}>
+                      <span className={`text-sm leading-relaxed ${
+                        item.kind === "removed" ? "text-red-400 line-through" :
+                        item.kind === "added" ? "text-green-700" : "text-zinc-600"
+                      }`}>
+                        {item.block.type !== "divider"
+                          ? `[${item.block.type}] ${item.block.content || "(빈 블록)"}`
+                          : "── 구분선 ──"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-3 border-t border-zinc-100 px-6 py-4">
+                  <button
+                    onClick={() => setDiffPending(null)}
+                    className="flex-1 rounded-xl border border-zinc-200 py-2.5 text-sm font-bold text-zinc-500 hover:bg-zinc-50 transition-colors"
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={applyDiffAndSave}
+                    className="flex-1 rounded-xl bg-brand py-2.5 text-sm font-bold text-white hover:bg-brand/90 transition-colors"
+                  >
+                    ✓ 적용하기
                   </button>
                 </div>
               </div>

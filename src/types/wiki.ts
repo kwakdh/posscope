@@ -39,6 +39,21 @@
 // CREATE POLICY "auth insert" ON wiki_docs FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 // CREATE POLICY "auth update" ON wiki_docs FOR UPDATE USING (auth.role() = 'authenticated');
 // CREATE POLICY "auth delete" ON wiki_docs FOR DELETE USING (auth.role() = 'authenticated');
+//
+// 블록 댓글 테이블 (신규 생성):
+// CREATE TABLE wiki_block_comments (
+//   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+//   doc_id UUID NOT NULL REFERENCES wiki_docs(id) ON DELETE CASCADE,
+//   block_id TEXT NOT NULL,
+//   content TEXT NOT NULL,
+//   author_name TEXT,
+//   mentions TEXT[] DEFAULT '{}',
+//   created_at TIMESTAMPTZ DEFAULT NOW()
+// );
+// ALTER TABLE wiki_block_comments ENABLE ROW LEVEL SECURITY;
+// CREATE POLICY "auth read"   ON wiki_block_comments FOR SELECT USING (auth.role() = 'authenticated');
+// CREATE POLICY "auth insert" ON wiki_block_comments FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+// CREATE POLICY "auth delete" ON wiki_block_comments FOR DELETE USING (auth.role() = 'authenticated');
 
 export type BlockType =
   | "paragraph" | "h1" | "h2" | "h3"
@@ -49,6 +64,7 @@ export type Block = {
   id: string;
   type: BlockType;
   content: string;
+  tags?: string[];
 };
 
 export type WikiMenu = {
