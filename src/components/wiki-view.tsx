@@ -301,40 +301,73 @@ export function WikiView({
     }
   }
 
-  // ── 포스앱 메뉴 동기화 ────────────────────────────────────────────────────
+  // ── 포스앱 메뉴 동기화 (product-tabs와 동일 필터링) ─────────────────────
+  // 숨김 카테고리
+  const POS_HIDDEN_CATS = new Set(["결제"]);
+  // 하위 기능 없이 카테고리 자체를 단일 항목으로 처리
+  const POS_FLAT_CATS   = new Set(["상품", "테이블", "주문 현황", "모드 변경 (키오스크 모드)"]);
+  // 숨김 기능
+  const POS_HIDDEN_FEAT = new Set(["이용 가이드"]);
+  // 카테고리 표시명 오버라이드
+  const POS_CAT_LABELS: Record<string, string> = {
+    "상품": "상품 (결제)",
+    "모드 변경 (키오스크 모드)": "키오스크",
+  };
+
   async function handlePosSyncMenus() {
     if (!products.length) { showToast("동기화할 포스앱 데이터가 없습니다."); return; }
-    if (!confirm("포스앱 메뉴 구조를 위키에 추가합니다. 이미 같은 이름의 메뉴가 있으면 건너뜁니다. 계속하시겠습니까?")) return;
     setSyncing(true);
     let added = 0;
     try {
       const existingTitles = new Set(menus.map(m => m.title));
+      const multiProduct = products.length > 1;
+
       for (const product of products) {
+        // 제품별 "첫화면" 항목
+        const homeLabel = multiProduct ? `[${product.name}] 첫화면` : "첫화면";
+        if (!existingTitles.has(homeLabel)) {
+          const res = await fetch("/api/wiki-menus", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title: homeLabel, parent_id: null, sort_order: added }),
+          });
+          const { menu } = await res.json() as { menu?: WikiMenu };
+          if (menu) { setMenus(prev => [...prev, menu]); existingTitles.add(homeLabel); added++; }
+        }
+
         for (const category of product.categories) {
-          if (existingTitles.has(category.name)) continue;
+          if (POS_HIDDEN_CATS.has(category.name)) continue;
+
+          const rawLabel  = POS_CAT_LABELS[category.name] ?? category.name;
+          const catLabel  = multiProduct ? `[${product.name}] ${rawLabel}` : rawLabel;
+          if (existingTitles.has(catLabel)) continue;
+
+          // flat 카테고리: 자식 없이 단일 항목
+          const isFlat = POS_FLAT_CATS.has(category.name);
+          const features = isFlat
+            ? []
+            : category.features.filter(f => !POS_HIDDEN_FEAT.has(f.name));
+
           const parentRes = await fetch("/api/wiki-menus", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ title: category.name, parent_id: null, sort_order: menus.length + added }),
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title: catLabel, parent_id: null, sort_order: added }),
           });
           const { menu: parentMenu } = await parentRes.json() as { menu?: WikiMenu };
           if (!parentMenu) continue;
           setMenus(prev => [...prev, parentMenu]);
-          existingTitles.add(category.name);
+          existingTitles.add(catLabel);
           added++;
-          for (let fi = 0; fi < category.features.length; fi++) {
-            const feat = category.features[fi];
+
+          for (let fi = 0; fi < features.length; fi++) {
             const childRes = await fetch("/api/wiki-menus", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ title: feat.name, parent_id: parentMenu.id, sort_order: fi }),
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ title: features[fi].name, parent_id: parentMenu.id, sort_order: fi }),
             });
             const { menu: childMenu } = await childRes.json() as { menu?: WikiMenu };
             if (childMenu) setMenus(prev => [...prev, childMenu]);
           }
         }
       }
-      showToast(added > 0 ? `${added}개 메뉴를 동기화했습니다.` : "새로 추가할 메뉴가 없습니다.");
+      showToast(added > 0 ? `포스앱 메뉴 ${added}개 동기화 완료!` : "이미 동기화되어 있습니다.");
     } finally {
       setSyncing(false);
     }
@@ -470,10 +503,30 @@ export function WikiView({
           </div>
         ) : (
           <ul className="flex flex-col gap-0.5">
-            {rootMenus.length === 0 && (
-              <li className="px-2 py-2 text-xs text-zinc-400">
-                메뉴가 없습니다. + 버튼으로 추가하세요.
+            {rootMenus.length === 0 && !syncing && (
+              <li className="px-1 py-2">
+                {canEdit && products.length > 0 ? (
+                  <div className="flex flex-col gap-2 rounded-2xl bg-brand/5 p-3">
+                    <p className="text-xs font-bold text-brand">포스앱 메뉴로 시작하기</p>
+                    <p className="text-[11px] leading-relaxed text-zinc-400">
+                      포스앱 사이드바와 동일한 구조를 위키에 자동 생성합니다.
+                    </p>
+                    <button onClick={handlePosSyncMenus} disabled={syncing}
+                      className="rounded-xl bg-brand py-2 text-xs font-bold text-white hover:bg-brand/90 disabled:opacity-40 transition-colors">
+                      📱 포스앱 메뉴 가져오기
+                    </button>
+                    <button onClick={() => { setAddingChildOf("__root__"); setAddingTitle(""); }}
+                      className="rounded-xl bg-zinc-100 py-2 text-xs font-bold text-zinc-500 hover:bg-zinc-200 transition-colors">
+                      + 직접 추가
+                    </button>
+                  </div>
+                ) : (
+                  <p className="px-1 text-xs text-zinc-400">메뉴가 없습니다. + 버튼으로 추가하세요.</p>
+                )}
               </li>
+            )}
+            {syncing && (
+              <li className="px-2 py-2 text-xs text-zinc-400">메뉴 동기화 중...</li>
             )}
             {rootMenus.map((menu, ri) => {
               const children = menus
