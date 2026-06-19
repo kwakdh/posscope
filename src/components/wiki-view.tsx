@@ -227,7 +227,7 @@ export function WikiView({
 
   // 슬래시 커맨드 상태
   const [slashState, setSlashState] = useState<{ blockId: string; search: string } | null>(null);
-  const blockRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  const blockRefs = useRef<Record<string, HTMLElement | null>>({});
 
   // 피그마 가져오기 상태
   const [showFigmaModal, setShowFigmaModal] = useState(false);
@@ -414,6 +414,89 @@ export function WikiView({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
+  });
+
+  // ── 크로스-블록 다중 선택 일괄 삭제 ─────────────────────────────────────────
+  // Backspace/Delete 시 블록 경계를 넘는 Selection을 감지하여 머지 처리
+  useEffect(() => {
+    function onCrossBlockDelete(e: KeyboardEvent) {
+      if (e.key !== "Backspace" && e.key !== "Delete") return;
+
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || !sel.rangeCount) return;
+
+      const range = sel.getRangeAt(0);
+      const startBlockId = getAncestorBlockId(range.startContainer);
+      const endBlockId   = getAncestorBlockId(range.endContainer);
+
+      // 같은 블록 내 선택이거나 블록 외부 선택이면 기본 동작에 맡긴다
+      if (!startBlockId || !endBlockId || startBlockId === endBlockId) return;
+
+      e.preventDefault();
+      e.stopImmediatePropagation();
+
+      const area = document.querySelector("[data-wiki-blocks]");
+      if (!area) return;
+
+      const blockEls = Array.from(area.querySelectorAll("[data-block-id]")) as HTMLElement[];
+      const blockIds  = blockEls.map(el => el.dataset.blockId!);
+
+      const startIdx = blockIds.indexOf(startBlockId);
+      const endIdx   = blockIds.indexOf(endBlockId);
+      if (startIdx < 0 || endIdx < 0) return;
+
+      const startEl = blockEls[startIdx];
+      const endEl   = blockEls[endIdx];
+
+      const beforeLen = getCharOffsetInBlock(range.startContainer, range.startOffset, startEl);
+      const afterOff  = getCharOffsetInBlock(range.endContainer,   range.endOffset,   endEl);
+
+      const startText = startEl.innerText.replace(/\n$/, "");
+      const endText   = endEl.innerText.replace(/\n$/, "");
+
+      const merged = startText.slice(0, beforeLen) + endText.slice(afterOff);
+
+      // startIdx+1 ~ endIdx 블록 제거, startBlock 콘텐츠 머지
+      const removeSet = new Set(blockIds.slice(startIdx + 1, endIdx + 1));
+      setBlocks(prev => {
+        let next = prev
+          .filter(b => !removeSet.has(b.id))
+          .map(b => b.id === startBlockId ? { ...b, content: merged } : b);
+        if (next.length === 0) next = [{ id: crypto.randomUUID(), type: "paragraph" as BlockType, content: "" }];
+        return next;
+      });
+
+      sel.removeAllRanges();
+
+      // 커서를 머지 지점(startBlock의 beforeLen 위치)에 복원
+      setTimeout(() => {
+        const el = blockRefs.current[startBlockId];
+        if (!el) return;
+        el.focus();
+        try {
+          const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+          let remaining = beforeLen;
+          let node: Node | null = null;
+          let finalNode: Node | null = null;
+          let finalOffset = 0;
+          while ((node = walker.nextNode())) {
+            const len = node.textContent?.length ?? 0;
+            if (remaining <= len) { finalNode = node; finalOffset = remaining; break; }
+            remaining -= len;
+          }
+          if (finalNode) {
+            const r = document.createRange();
+            r.setStart(finalNode, finalOffset);
+            r.collapse(true);
+            window.getSelection()?.removeAllRanges();
+            window.getSelection()?.addRange(r);
+          }
+        } catch { /* 복원 실패 시 focus만 */ }
+      }, 20);
+    }
+
+    window.addEventListener("keydown", onCrossBlockDelete, true);
+    return () => window.removeEventListener("keydown", onCrossBlockDelete, true);
   });
 
   // ── 메뉴 CRUD ──────────────────────────────────────────────────────────────
@@ -862,7 +945,13 @@ export function WikiView({
       const focusId = next[Math.max(0, idx - 1)]?.id;
       setTimeout(() => {
         const el = blockRefs.current[focusId ?? ""];
-        if (el) { el.focus(); el.selectionStart = el.selectionEnd = el.value.length; }
+        if (!el) return;
+        el.focus();
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        window.getSelection()?.removeAllRanges();
+        window.getSelection()?.addRange(range);
       }, 10);
       return next;
     });
@@ -887,7 +976,7 @@ export function WikiView({
     updateBlock(block.id, { content: value });
   }
 
-  function handleBlockKeyDown(block: Block, e: React.KeyboardEvent<HTMLTextAreaElement>, idx: number) {
+  function handleBlockKeyDown(block: Block, e: React.KeyboardEvent<HTMLElement>, idx: number) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       const continueTypes: BlockType[] = ["bullet", "numbered"];
@@ -1225,7 +1314,7 @@ export function WikiView({
               />
 
               {/* 블록 목록 */}
-              <div className="mt-6 flex flex-col gap-0.5">
+              <div data-wiki-blocks className="mt-6 flex flex-col gap-0.5">
                 {blocks.map((block, bi) => {
                   // 번호 목록 순번 계산
                   let numberedIdx = 0;
@@ -1286,7 +1375,7 @@ export function WikiView({
                         {/* 블록 컨텐츠 */}
                         <div className={`relative min-w-0 flex-1 ${block.type === "callout" ? "rounded-xl border border-amber-200 bg-amber-50 px-4 py-3" : ""}`}>
                           {block.type === "callout" && <span className="mr-2 select-none">💡</span>}
-                          <BlockTextarea
+                          <BlockEditable
                             block={block}
                             blockIndex={bi}
                             canEdit={canEdit}
@@ -1633,46 +1722,85 @@ function TitleTextarea({
   );
 }
 
-// ── BlockTextarea ─────────────────────────────────────────────────────────────
+// ── BlockEditable ─────────────────────────────────────────────────────────────
+// textarea 대신 contenteditable div 사용 → 블록 경계를 넘는 드래그 선택 가능
 
-function BlockTextarea({
+function BlockEditable({
   block, blockIndex: _bi, canEdit, blockRefs, onChange, onKeyDown,
 }: {
   block: Block;
   blockIndex: number;
   canEdit: boolean;
-  blockRefs: React.MutableRefObject<Record<string, HTMLTextAreaElement | null>>;
+  blockRefs: React.MutableRefObject<Record<string, HTMLElement | null>>;
   onChange: (v: string) => void;
-  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => void;
 }) {
-  const ref = useRef<HTMLTextAreaElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     blockRefs.current[block.id] = ref.current;
     return () => { delete blockRefs.current[block.id]; };
   }, [block.id, blockRefs]);
 
-  useLayoutEffect(() => {
+  // 외부 변경(AI 가져오기, Diff 적용 등)을 DOM에 동기화
+  // 단, 현재 포커스 중인 블록이 아닐 때만 덮어쓴다
+  useEffect(() => {
     if (!ref.current) return;
-    ref.current.style.height = "auto";
-    ref.current.style.height = ref.current.scrollHeight + "px";
+    if (document.activeElement === ref.current) return;
+    const current = (ref.current.innerText ?? "").replace(/\n$/, "");
+    if (current !== block.content) {
+      ref.current.innerText = block.content;
+    }
   }, [block.content]);
 
   const cls = BLOCK_TEXT_CLS[block.type] ?? BLOCK_TEXT_CLS.paragraph!;
+  const placeholder = BLOCK_PLACEHOLDER[block.type] ?? "";
 
   return (
-    <textarea
+    <div
       ref={ref}
-      value={block.content}
-      readOnly={!canEdit}
-      onChange={e => onChange(e.target.value)}
+      data-block-id={block.id}
+      data-block-editable
+      data-placeholder={placeholder}
+      contentEditable={canEdit ? "true" : "false"}
+      suppressContentEditableWarning
+      onInput={canEdit ? (e => {
+        let text = (e.currentTarget as HTMLDivElement).innerText ?? "";
+        if (text.endsWith("\n")) text = text.slice(0, -1);
+        onChange(text);
+      }) : undefined}
       onKeyDown={onKeyDown}
-      placeholder={BLOCK_PLACEHOLDER[block.type]}
-      rows={1}
-      className={`w-full resize-none bg-transparent outline-none placeholder:text-zinc-300 ${cls}`}
-      style={{ overflow: "hidden" }}
+      onPaste={canEdit ? (e => {
+        e.preventDefault();
+        const text = e.clipboardData.getData("text/plain");
+        document.execCommand("insertText", false, text);
+      }) : undefined}
+      className={`w-full bg-transparent ${cls}`}
     />
   );
+}
+
+// ── 크로스-블록 선택 헬퍼 ────────────────────────────────────────────────────
+
+function getAncestorBlockId(node: Node | null): string | null {
+  let el: Element | null = node instanceof Element ? node : node?.parentElement ?? null;
+  while (el) {
+    const id = (el as HTMLElement).dataset?.blockId;
+    if (id) return id;
+    el = el.parentElement;
+  }
+  return null;
+}
+
+function getCharOffsetInBlock(container: Node, offset: number, blockEl: HTMLElement): number {
+  try {
+    const range = document.createRange();
+    range.setStart(blockEl, 0);
+    range.setEnd(container, offset);
+    return range.toString().length;
+  } catch {
+    return 0;
+  }
 }
 
 // ── SlashMenu ─────────────────────────────────────────────────────────────────

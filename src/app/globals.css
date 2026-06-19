@@ -37,3 +37,20 @@ body {
 .animate-pin-pulse {
   animation: pin-pulse 0.75s ease-in-out infinite;
 }
+
+/* ── 위키 블록 contenteditable placeholder ─────────────────────────────── */
+[data-block-editable][data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: #d4d4d8;
+  pointer-events: none;
+  user-select: none;
+}
+[data-block-editable]:focus {
+  outline: none;
+}
+[data-block-editable] {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  min-height: 1.5em;
+}
