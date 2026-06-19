@@ -278,6 +278,45 @@ export function WikiView({
     }
   }
 
+  // ── 전체 블록 내용 복사 ────────────────────────────────────────────────────
+  async function handleCopyAll() {
+    let numberedCount = 0;
+    const lines: string[] = [];
+
+    if (title) lines.push(title, "");
+
+    for (const block of blocks) {
+      if (block.type === "divider") {
+        lines.push("────────────────────");
+        numberedCount = 0;
+        continue;
+      }
+      if (block.type === "numbered") {
+        numberedCount++;
+      } else {
+        numberedCount = 0;
+      }
+      const c = block.content;
+      switch (block.type) {
+        case "h1":      lines.push(`# ${c}`); break;
+        case "h2":      lines.push(`## ${c}`); break;
+        case "h3":      lines.push(`### ${c}`); break;
+        case "bullet":  lines.push(`• ${c}`); break;
+        case "numbered":lines.push(`${numberedCount}. ${c}`); break;
+        case "quote":   lines.push(`> ${c}`); break;
+        case "callout": lines.push(`💡 ${c}`); break;
+        default:        if (c) lines.push(c); break;
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      showToast("전체 내용이 복사되었습니다 ✓");
+    } catch {
+      showToast("복사 실패 — 브라우저 권한을 확인하세요");
+    }
+  }
+
   // Ctrl+S 단축키
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -908,6 +947,14 @@ export function WikiView({
                   </>
                 )}
                 <div className="ml-auto flex flex-wrap items-center gap-2">
+                  {/* 전체 복사 버튼 — 항상 표시 */}
+                  <button
+                    onClick={handleCopyAll}
+                    className="rounded-lg px-3 py-1.5 text-xs font-bold text-zinc-500 border border-zinc-200 hover:border-zinc-400 hover:text-zinc-700 transition-colors"
+                    title="전체 블록 내용을 클립보드에 복사"
+                  >
+                    📋 전체 복사
+                  </button>
                   {canEdit && savedFigmaUrl ? (
                     /* ── 피그마 연동 후: 3버튼 그룹 ── */
                     <>
