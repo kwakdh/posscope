@@ -168,6 +168,11 @@ export function WikiView({
   const [aiStructuring, setAiStructuring] = useState(false);
   const [figmaError, setFigmaError] = useState<string | null>(null);
 
+  // 피그마 내용 추가 전용 모달 상태
+  const [showFigmaAppendModal, setShowFigmaAppendModal] = useState(false);
+  const [appendFigmaUrl, setAppendFigmaUrl] = useState("");
+  const [appendFigmaError, setAppendFigmaError] = useState<string | null>(null);
+
   // POS 동기화 상태
   const [syncing, setSyncing] = useState(false);
 
@@ -440,11 +445,12 @@ export function WikiView({
     }
   }
 
-  // ── 피그마 내용 하단에 추가 (기존 블록 유지 + 새 내용 append) ────────────
+  // ── 피그마 내용 하단에 추가 (새 URL 입력 → 기존 블록 유지 + append) ────────
   async function handleFigmaAppend() {
-    const urlToUse = savedFigmaUrl;
-    if (!urlToUse?.trim()) return;
-    setFigmaImporting(true); setFigmaError(null);
+    const urlToUse = appendFigmaUrl.trim();
+    if (!urlToUse) return;
+    setShowFigmaAppendModal(false);
+    setFigmaImporting(true); setAppendFigmaError(null);
     try {
       const res = await fetch("/api/figma-parse", {
         method: "POST",
@@ -453,7 +459,8 @@ export function WikiView({
       });
       if (!res.ok) {
         const { error } = await res.json().catch(() => ({})) as { error?: string };
-        setFigmaError(error ?? "피그마 가져오기 실패"); return;
+        setShowFigmaAppendModal(true);
+        setAppendFigmaError(error ?? "피그마 가져오기 실패"); return;
       }
       const { rawNode } = await res.json() as { rawNode: import("@/utils/figmaParser").FigmaNode };
       const parsed = parseFigmaTree(rawNode);
@@ -493,6 +500,7 @@ export function WikiView({
         const mergedBlocks = [...blocks, divider, ...appendBlocks];
         setBlocks(mergedBlocks);
         setIsDirty(true);
+        setAppendFigmaUrl("");
         if (doc) {
           setSaving(true);
           try {
@@ -514,7 +522,8 @@ export function WikiView({
         showToast("추가할 콘텐츠를 찾지 못했습니다.");
       }
     } catch {
-      setFigmaError("피그마 가져오기 중 오류가 발생했습니다.");
+      setShowFigmaAppendModal(true);
+      setAppendFigmaError("피그마 가져오기 중 오류가 발생했습니다.");
     } finally {
       setFigmaImporting(false);
     }
@@ -911,12 +920,12 @@ export function WikiView({
                         {aiStructuring ? "AI 분석 중..." : figmaImporting ? "가져오는 중..." : "🔄 다시 가져오기"}
                       </button>
                       <button
-                        onClick={handleFigmaAppend}
+                        onClick={() => { setShowFigmaAppendModal(true); setAppendFigmaError(null); }}
                         disabled={figmaImporting || aiStructuring}
                         className="rounded-lg px-3 py-1.5 text-xs font-bold text-brand border border-brand hover:bg-brand/5 transition-colors disabled:opacity-40"
-                        title="현재 위키 하단에 피그마 내용 추가"
+                        title="새 피그마 URL로 위키 하단에 내용 추가"
                       >
-                        {aiStructuring ? "AI 분석 중..." : figmaImporting ? "가져오는 중..." : "➕ 내용 추가하기"}
+                        ➕ 내용 추가하기
                       </button>
                       <a
                         href={savedFigmaUrl}
@@ -1061,7 +1070,7 @@ export function WikiView({
             </div>
           )}
 
-          {/* 피그마 가져오기 모달 */}
+          {/* 피그마 가져오기 모달 (최초 연동) */}
           {showFigmaModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm px-4"
               onClick={() => { setShowFigmaModal(false); setFigmaUrl(""); setFigmaError(null); }}>
@@ -1088,6 +1097,41 @@ export function WikiView({
                     disabled={figmaImporting || aiStructuring || !figmaUrl.trim()}
                     className="flex-1 rounded-xl bg-brand py-2.5 text-sm font-bold text-white hover:bg-brand/90 disabled:opacity-40 transition-colors">
                     {aiStructuring ? "AI 구조화 중..." : figmaImporting ? "가져오는 중..." : "가져오기"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 피그마 내용 추가 모달 (새 URL → 기존 내용 하단에 append) */}
+          {showFigmaAppendModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm px-4"
+              onClick={() => { setShowFigmaAppendModal(false); setAppendFigmaUrl(""); setAppendFigmaError(null); }}>
+              <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl"
+                onClick={e => e.stopPropagation()}>
+                <h3 className="mb-1 text-lg font-bold text-ink">➕ 피그마 내용 추가하기</h3>
+                <p className="mb-5 text-sm text-zinc-400">
+                  추가할 피그마 URL을 입력하세요. AI가 내용을 분석하여 현재 위키 문서 하단에 이어 붙입니다.
+                </p>
+                <input
+                  autoFocus
+                  type="url"
+                  value={appendFigmaUrl}
+                  onChange={e => setAppendFigmaUrl(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") handleFigmaAppend(); }}
+                  placeholder="https://www.figma.com/design/...?node-id=..."
+                  className="mb-4 w-full rounded-xl border border-zinc-200 px-4 py-3 text-sm outline-none focus:border-brand/40 focus:ring-2 focus:ring-brand/20"
+                />
+                {appendFigmaError && <p className="mb-3 text-xs text-red-500">{appendFigmaError}</p>}
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => { setShowFigmaAppendModal(false); setAppendFigmaUrl(""); setAppendFigmaError(null); }}
+                    className="flex-1 rounded-xl border border-zinc-200 py-2.5 text-sm font-bold text-zinc-500 hover:bg-zinc-50 transition-colors">
+                    취소
+                  </button>
+                  <button type="button" onClick={handleFigmaAppend}
+                    disabled={figmaImporting || aiStructuring || !appendFigmaUrl.trim()}
+                    className="flex-1 rounded-xl bg-brand py-2.5 text-sm font-bold text-white hover:bg-brand/90 disabled:opacity-40 transition-colors">
+                    {aiStructuring ? "AI 구조화 중..." : figmaImporting ? "가져오는 중..." : "내용 추가하기"}
                   </button>
                 </div>
               </div>
