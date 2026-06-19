@@ -84,9 +84,16 @@ export function allTextNodes(node: FigmaNode): FigmaNode[] {
 }
 
 export function extractAllText(node: FigmaNode, skipPattern?: RegExp): string {
+  const seen = new Set<string>();
   return allTextNodes(node)
     .map(n => n.characters?.trim() ?? "")
-    .filter(t => t && !/^[-─—━⸻]+$/.test(t) && !(skipPattern?.test(t) ?? false))
+    .filter(t => {
+      if (!t || /^[-─—━⸻]+$/.test(t) || (skipPattern?.test(t) ?? false)) return false;
+      const norm = t.replace(/\s+/g, " ");
+      if (seen.has(norm)) return false;
+      seen.add(norm);
+      return true;
+    })
     .join("\n");
 }
 
@@ -270,21 +277,29 @@ export function extractDescriptionGroups(node: FigmaNode): DescGroup[] {
 
   const groupMap = new Map<string, DescGroup>();
   const groupOrder: string[] = [];
+  const seenTexts = new Set<string>();
 
   for (const { pin, text } of rawRows) {
+    const normText = text.replace(/\s+/g, " ").trim();
     if (pin.includes("-")) {
       const parentPin = pin.split("-")[0];
       if (!groupMap.has(parentPin)) {
         groupMap.set(parentPin, { id: `desc_group_${parentPin}`, pinNumber: parentPin, title: "", subItems: [] });
         groupOrder.push(parentPin);
       }
-      groupMap.get(parentPin)!.subItems.push({ pinNumber: pin, text } as DescSubItem);
+      if (!seenTexts.has(normText)) {
+        seenTexts.add(normText);
+        groupMap.get(parentPin)!.subItems.push({ pinNumber: pin, text } as DescSubItem);
+      }
     } else {
-      if (!groupMap.has(pin)) {
-        groupMap.set(pin, { id: `desc_group_${pin}`, pinNumber: pin, title: text, subItems: [] });
-        groupOrder.push(pin);
-      } else {
-        groupMap.get(pin)!.title = text;
+      if (!seenTexts.has(normText)) {
+        seenTexts.add(normText);
+        if (!groupMap.has(pin)) {
+          groupMap.set(pin, { id: `desc_group_${pin}`, pinNumber: pin, title: text, subItems: [] });
+          groupOrder.push(pin);
+        } else {
+          groupMap.get(pin)!.title = text;
+        }
       }
     }
   }

@@ -27,9 +27,13 @@
 //   version_minor INTEGER NOT NULL DEFAULT 1,
 //   is_locked BOOLEAN NOT NULL DEFAULT FALSE,
 //   change_log TEXT NOT NULL DEFAULT '',
+//   figma_url TEXT,
 //   updated_at TIMESTAMPTZ DEFAULT NOW(),
 //   created_at TIMESTAMPTZ DEFAULT NOW()
 // );
+//
+// 기존 테이블에 figma_url 컬럼 추가 (이미 테이블이 있는 경우):
+// ALTER TABLE wiki_docs ADD COLUMN IF NOT EXISTS figma_url TEXT;
 // ALTER TABLE wiki_docs ENABLE ROW LEVEL SECURITY;
 // CREATE POLICY "auth read"   ON wiki_docs FOR SELECT USING (auth.role() = 'authenticated');
 // CREATE POLICY "auth insert" ON wiki_docs FOR INSERT WITH CHECK (auth.role() = 'authenticated');
@@ -69,4 +73,5 @@ export type WikiDoc = {
   change_log: string;
   updated_at: string | null;
   created_at: string;
+  figma_url?: string | null;
 };

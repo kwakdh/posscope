@@ -10,8 +10,8 @@ export async function PUT(
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const { title, blocks, authorName } = await req.json() as {
-    title?: string; blocks?: unknown[]; authorName?: string;
+  const { title, blocks, authorName, figmaUrl } = await req.json() as {
+    title?: string; blocks?: unknown[]; authorName?: string; figmaUrl?: string | null;
   };
 
   const admin = createAdminClient();
@@ -25,15 +25,18 @@ export async function PUT(
 
   const newMinor = (current?.version_minor ?? 0) + 1;
 
+  const updatePayload: Record<string, unknown> = {
+    title: title ?? "제목 없음",
+    blocks: blocks ?? [],
+    author_name: authorName ?? null,
+    version_minor: newMinor,
+    updated_at: new Date().toISOString(),
+  };
+  if (figmaUrl !== undefined) updatePayload.figma_url = figmaUrl;
+
   const { data, error } = await admin
     .from("wiki_docs")
-    .update({
-      title: title ?? "제목 없음",
-      blocks: blocks ?? [],
-      author_name: authorName ?? null,
-      version_minor: newMinor,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updatePayload)
     .eq("id", id)
     .select("*")
     .single();

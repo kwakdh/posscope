@@ -79,6 +79,7 @@ export function WikiView({
   // 피그마 가져오기 상태
   const [showFigmaModal, setShowFigmaModal] = useState(false);
   const [figmaUrl, setFigmaUrl] = useState("");
+  const [savedFigmaUrl, setSavedFigmaUrl] = useState<string | null>(null);
   const [figmaImporting, setFigmaImporting] = useState(false);
   const [figmaError, setFigmaError] = useState<string | null>(null);
 
@@ -131,6 +132,7 @@ export function WikiView({
   function initDoc(d: WikiDoc) {
     setDoc(d);
     setTitle(d.title);
+    setSavedFigmaUrl(d.figma_url ?? null);
     const init: Block[] = d.blocks.length > 0
       ? d.blocks
       : [{ id: crypto.randomUUID(), type: "paragraph", content: "" }];
@@ -150,18 +152,30 @@ export function WikiView({
     setTimeout(() => setToast(null), 2500);
   }
 
-  async function handleSave() {
-    if (!doc || !isDirty || saving) return;
+  async function handleSave(overrideFigmaUrl?: string | null) {
+    if (!doc || saving) return;
+    if (!isDirty && overrideFigmaUrl === undefined) return;
     setSaving(true);
     try {
+      const payload: Record<string, unknown> = { title, blocks, authorName: currentUserName };
+      if (overrideFigmaUrl !== undefined) payload.figmaUrl = overrideFigmaUrl;
       const res = await fetch(`/api/wiki-docs/${doc.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, blocks, authorName: currentUserName }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error();
       const { doc: updated } = await res.json();
       if (updated) initDoc({ ...doc, ...updated });
+      // 메뉴 제목도 동기화 (doc 제목이 변경된 경우)
+      if (selectedMenuId && title !== menus.find(m => m.id === selectedMenuId)?.title) {
+        await fetch(`/api/wiki-menus/${selectedMenuId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title }),
+        });
+        setMenus(prev => prev.map(m => m.id === selectedMenuId ? { ...m, title } : m));
+      }
       showToast("저장 완료 ✓");
     } catch {
       showToast("저장 실패");
@@ -202,7 +216,10 @@ export function WikiView({
       body: JSON.stringify({ title: newTitle.trim() }),
     });
     const { menu } = await res.json();
-    if (menu) setMenus(prev => prev.map(m => m.id === id ? menu : m));
+    if (menu) {
+      setMenus(prev => prev.map(m => m.id === id ? menu : m));
+      if (id === selectedMenuId) setTitle(newTitle.trim());
+    }
     setEditingMenuId(null);
   }
 
@@ -244,14 +261,15 @@ export function WikiView({
   }
 
   // ── 피그마에서 가져오기 ────────────────────────────────────────────────────
-  async function handleFigmaImport() {
-    if (!figmaUrl.trim()) return;
+  async function handleFigmaImport(overrideUrl?: string) {
+    const urlToUse = overrideUrl ?? figmaUrl;
+    if (!urlToUse.trim()) return;
     setFigmaImporting(true); setFigmaError(null);
     try {
       const res = await fetch("/api/figma-parse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: figmaUrl }),
+        body: JSON.stringify({ url: urlToUse }),
       });
       if (!res.ok) {
         const { error } = await res.json().catch(() => ({})) as { error?: string };
@@ -259,6 +277,8 @@ export function WikiView({
       }
       const { rawNode } = await res.json() as { rawNode: import("@/utils/figmaParser").FigmaNode };
       const parsed = parseFigmaTree(rawNode);
+      // overrideUrl로 호출된 경우 내부 figmaUrl 상태도 동기화
+      if (overrideUrl) setFigmaUrl(overrideUrl);
 
       const newBlocks: Block[] = [];
       if (parsed.hasSections && parsed.sections.length > 0) {
@@ -286,14 +306,37 @@ export function WikiView({
         }
       }
 
-      if (parsed.wireframeName) setTitle(parsed.wireframeName);
+      const newTitle = parsed.wireframeName || title;
+      if (parsed.wireframeName) setTitle(newTitle);
+      const importedUrl = (overrideUrl ?? figmaUrl).trim();
+      setShowFigmaModal(false); setFigmaUrl("");
       if (newBlocks.length > 0) {
         setBlocks(newBlocks); setIsDirty(true);
-        showToast("피그마 내용을 가져왔습니다. Ctrl+S로 저장하세요.");
+        setSavedFigmaUrl(importedUrl);
+        // 상태 업데이트 전에 computed 값으로 직접 저장
+        if (doc) {
+          setSaving(true);
+          try {
+            const saveRes = await fetch(`/api/wiki-docs/${doc.id}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ title: newTitle, blocks: newBlocks, authorName: currentUserName, figmaUrl: importedUrl }),
+            });
+            if (saveRes.ok) {
+              const { doc: updated } = await saveRes.json();
+              if (updated) initDoc({ ...doc, ...updated });
+              if (selectedMenuId) {
+                setMenus(prev => prev.map(m => m.id === selectedMenuId ? { ...m, title: newTitle } : m));
+              }
+            }
+          } finally {
+            setSaving(false);
+          }
+        }
+        showToast("피그마 내용을 가져왔습니다.");
       } else {
         showToast("가져올 텍스트 콘텐츠를 찾지 못했습니다.");
       }
-      setShowFigmaModal(false); setFigmaUrl("");
     } catch {
       setFigmaError("피그마 가져오기 중 오류가 발생했습니다.");
     } finally {
@@ -686,7 +729,28 @@ export function WikiView({
                   </>
                 )}
                 <div className="ml-auto flex items-center gap-2">
-                  {canEdit && (
+                  {canEdit && savedFigmaUrl && (
+                    <>
+                      <button
+                        onClick={() => handleFigmaImport(savedFigmaUrl)}
+                        disabled={figmaImporting}
+                        className="rounded-full px-3 py-1.5 text-xs font-bold text-zinc-400 hover:bg-zinc-100 hover:text-brand transition-colors disabled:opacity-40"
+                        title="저장된 피그마 URL로 다시 가져오기"
+                      >
+                        {figmaImporting ? "가져오는 중..." : "🔄 다시 가져오기"}
+                      </button>
+                      <a
+                        href={savedFigmaUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-full px-3 py-1.5 text-xs font-bold text-zinc-400 hover:bg-zinc-100 hover:text-brand transition-colors"
+                        title="피그마 원본 열기"
+                      >
+                        🔗 피그마 바로가기
+                      </a>
+                    </>
+                  )}
+                  {canEdit && !savedFigmaUrl && (
                     <button
                       onClick={() => { setShowFigmaModal(true); setFigmaError(null); }}
                       className="rounded-full px-3 py-1.5 text-xs font-bold text-zinc-400 hover:bg-zinc-100 hover:text-brand transition-colors"
@@ -697,7 +761,7 @@ export function WikiView({
                   )}
                   {canEdit && (
                     <button
-                      onClick={handleSave}
+                      onClick={() => handleSave()}
                       disabled={!isDirty || saving}
                       className={`rounded-full px-4 py-1.5 text-sm font-bold transition-colors disabled:opacity-40 ${
                         isDirty ? "bg-brand text-white hover:bg-brand/90" : "bg-zinc-100 text-zinc-500"
@@ -841,7 +905,7 @@ export function WikiView({
                     className="flex-1 rounded-xl border border-zinc-200 py-2.5 text-sm font-bold text-zinc-500 hover:bg-zinc-50 transition-colors">
                     취소
                   </button>
-                  <button type="button" onClick={handleFigmaImport}
+                  <button type="button" onClick={() => handleFigmaImport()}
                     disabled={figmaImporting || !figmaUrl.trim()}
                     className="flex-1 rounded-xl bg-brand py-2.5 text-sm font-bold text-white hover:bg-brand/90 disabled:opacity-40 transition-colors">
                     {figmaImporting ? "가져오는 중..." : "가져오기"}
