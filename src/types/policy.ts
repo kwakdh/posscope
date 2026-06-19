@@ -1,6 +1,6 @@
 // ── 공유 데이터 타입 ──────────────────────────────────────────────────────────
 
-export type PolicyMode = "image" | "figma" | "ai" | "canvas";
+export type PolicyMode = "image" | "figma" | "ai" | "canvas" | "interactive";
 
 /** 이미지 위 번호 배지 — pinNumber는 "1", "3-1", "3-2" 같은 문자열 */
 export type BadgeMark = {

@@ -568,6 +568,8 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
   const [enhanceMode, setEnhanceMode] = useState(false);
   const [enhanceSourceName, setEnhanceSourceName] = useState<string | null>(null);
   const aiFileRef = useRef<HTMLInputElement>(null);
+  const [showInteractiveCode, setShowInteractiveCode] = useState(false);
+  const [snapshotPolicy, setSnapshotPolicy] = useState<Policy | null>(null);
 
   // ── 캔버스 도구 모드 (V=이동, H=패닝) ──────────────────────────────────
   const [canvasToolMode, setCanvasToolMode] = useState<"hand" | "move">("move");
@@ -713,6 +715,36 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
       .order("version_minor", { ascending: true });
     if (data) setHistory(data.map(normalizePolicy));
     setHistoryLoaded(true);
+  }
+
+  // ── 인터랙티브 HTML 생성 ─────────────────────────────────────────────
+  async function handleInteractiveGenerate() {
+    if (!aiPrompt.trim()) return;
+    setAiGenerating(true); setAiError(null);
+    try {
+      const res = await fetch("/api/ai-interactive", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: aiPrompt,
+          context: { title, descriptions: descGroups.map(g => g.title) },
+        }),
+      });
+      if (!res.ok) { setAiError((await res.json().catch(() => ({}))).error ?? "생성 실패"); setAiGenerating(false); return; }
+      const data = await res.json() as { html: string; descriptions?: string[] };
+      const iScreen: AIScreen[] = [{ id: crypto.randomUUID(), name: "인터랙티브", html: data.html, order: 0, flowTo: [] }];
+      setAiScreens(iScreen);
+      setShowInteractiveCode(false);
+      if (data.descriptions?.length) {
+        const ng: DescGroup[] = data.descriptions.map((text, i) => ({
+          id: crypto.randomUUID(), pinNumber: String(i + 1), title: text, subItems: [],
+        }));
+        setDescGroups(ng);
+        await persist({ mode: "interactive", ai_screens: iScreen, description_groups: ng });
+      } else {
+        await persist({ mode: "interactive", ai_screens: iScreen });
+      }
+    } catch (e) { console.error(e); setAiError("인터랙티브 생성 중 오류가 발생했습니다."); }
+    finally { setAiGenerating(false); }
   }
 
   // ── persist ────────────────────────────────────────────────────────────
@@ -1082,7 +1114,7 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
 
         {/* 모드 스위처 */}
         <div className="shrink-0 flex items-center gap-0.5 rounded-xl bg-zinc-100 p-1">
-          {([["canvas", "📁 시안"], ["ai", "✨ AI"]] as [PolicyMode, string][]).map(([m, label]) => (
+          {([["canvas", "📁 시안"], ["ai", "✨ AI"], ["interactive", "🎮 인터랙티브"]] as [PolicyMode, string][]).map(([m, label]) => (
             <button key={m} type="button"
               onClick={canEdit ? () => { setMode(m); persist({ mode: m }); } : undefined}
               className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${mode === m ? "bg-white text-ink shadow-sm" : "text-zinc-500 hover:text-ink"} ${!canEdit ? "pointer-events-none" : ""}`}>
@@ -1162,6 +1194,23 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
           </div>
         )}
 
+        {/* ── 인터랙티브 모드 프롬프트 입력 ── */}
+        {mode === "interactive" && canEdit && (
+          <div className="flex flex-col gap-3 border-b border-zinc-100 p-4">
+            <div className="flex gap-2">
+              <input value={aiPrompt} onChange={e => setAiPrompt(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) handleInteractiveGenerate(); }}
+                placeholder="예: 상품 담기/취소, 수량 조절, 합계 계산이 실시간으로 작동하는 주문 화면 (Enter)"
+                className="flex-1 rounded-xl border border-indigo-200 bg-white px-4 py-2.5 text-sm text-ink outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
+              <button type="button" onClick={handleInteractiveGenerate} disabled={aiGenerating}
+                className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-50">
+                {aiGenerating ? "🎮 빌드 중..." : "🎮 빌드"}
+              </button>
+            </div>
+            {aiError && <p className="text-xs text-red-500">{aiError}</p>}
+          </div>
+        )}
+
         {/* ── 피그마 다시 불러오기 바 — 이미 시안이 있을 때만 표시 ── */}
         {mode === "canvas" && canEdit && wireframes.length > 0 && (
           <div className="border-b border-zinc-100 px-4 py-2.5">
@@ -1233,6 +1282,39 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
                   </div>
                 )}
               </div>
+            )}
+
+            {/* 인터랙티브 모드 */}
+            {mode === "interactive" && (
+              aiScreens.length > 0 ? (
+                <div className="flex h-full flex-col">
+                  <div className="flex items-center gap-3 px-4 py-2.5">
+                    <span className="text-xs font-bold text-indigo-600">🎮 인터랙티브 프로토타입</span>
+                    <button type="button" onClick={() => setShowInteractiveCode(v => !v)}
+                      className="ml-auto rounded-lg bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-500 hover:bg-zinc-200 transition-colors">
+                      {showInteractiveCode ? "👁 프리뷰" : "📋 코드 보기"}
+                    </button>
+                  </div>
+                  {showInteractiveCode ? (
+                    <pre className="mx-2 mb-2 flex-1 overflow-auto rounded-2xl bg-zinc-900 p-4 text-xs text-zinc-100 leading-relaxed">
+                      <code>{aiScreens[0]?.html}</code>
+                    </pre>
+                  ) : (
+                    <iframe
+                      srcDoc={aiScreens[0]?.html}
+                      sandbox="allow-scripts allow-same-origin allow-forms"
+                      className="mx-2 mb-2 flex-1 rounded-2xl border-0"
+                      style={{ minHeight: 600 }}
+                      title="인터랙티브 프로토타입"
+                    />
+                  )}
+                </div>
+              ) : (
+                <div className="flex h-[480px] w-[390px] flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-indigo-200 bg-white text-zinc-400">
+                  <span className="text-5xl">🎮</span>
+                  <span className="text-sm font-medium text-center">위에서 기능을 설명하면<br />작동하는 프로토타입을 빌드합니다</span>
+                </div>
+              )
             )}
 
             {/* canvas 모드 — 시안이 있을 때만 WireframeCanvas 렌더링 */}
@@ -1423,6 +1505,10 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
                     <span className="shrink-0 text-xs text-zinc-400">
                       {[h.author_name, h.published_at ? fmtDate(h.published_at) : null].filter(Boolean).join(" · ")}
                     </span>
+                    <button type="button" onClick={() => setSnapshotPolicy(h)}
+                      className="shrink-0 rounded-lg bg-zinc-50 px-2.5 py-1 text-xs font-bold text-zinc-400 hover:bg-brand/10 hover:text-brand transition-colors">
+                      열람
+                    </button>
                   </div>
                 );
               })}
@@ -1430,6 +1516,68 @@ function PolicyCard({ policy, tabName, itemType, itemId, onSaved, onDelete, onAd
           )}
         </div>
       )}
+      {/* ── 히스토리 스냅샷 열람 모달 ── */}
+      {snapshotPolicy && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
+          onClick={() => setSnapshotPolicy(null)}>
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-3xl bg-white shadow-2xl"
+            onClick={e => e.stopPropagation()}>
+            {/* 헤더 */}
+            <div className="flex items-center gap-3 border-b border-zinc-100 px-6 py-4">
+              <span className={`shrink-0 rounded-full px-3 py-1 text-sm font-bold ${snapshotPolicy.version_major >= 1 ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                v{snapshotPolicy.version_major}.{snapshotPolicy.version_minor}
+              </span>
+              <span className="shrink-0 text-sm text-zinc-400">{snapshotPolicy.publish_type === "major" ? "🔒 메이저 배포" : "🚀 마이너 발행"}</span>
+              <p className="flex-1 truncate text-sm font-bold text-ink">{snapshotPolicy.title || "(제목 없음)"}</p>
+              <button type="button" onClick={() => setSnapshotPolicy(null)}
+                className="shrink-0 rounded-full p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 transition-colors">✕</button>
+            </div>
+            {/* 본문 */}
+            <div className="overflow-y-auto p-6" style={{ maxHeight: "calc(90vh - 72px)" }}>
+              {/* 메타 */}
+              <div className="mb-5 flex flex-wrap gap-4 text-xs text-zinc-400">
+                {snapshotPolicy.author_name && <span>작성자: <strong className="text-zinc-600">{snapshotPolicy.author_name}</strong></span>}
+                {snapshotPolicy.published_at && <span>발행일: <strong className="text-zinc-600">{fmtDate(snapshotPolicy.published_at)}</strong></span>}
+              </div>
+              {snapshotPolicy.change_log && (
+                <div className="mb-5 rounded-2xl bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+                  <span className="mr-2 text-xs font-bold text-zinc-400">변경 사항</span>{snapshotPolicy.change_log}
+                </div>
+              )}
+              {/* 와이어프레임 썸네일 */}
+              {snapshotPolicy.wireframes.filter(w => w.url).length > 0 && (
+                <div className="mb-5">
+                  <p className="mb-2 text-xs font-bold text-zinc-400">시안 ({snapshotPolicy.wireframes.length}개)</p>
+                  <div className="flex gap-3 overflow-x-auto pb-2">
+                    {snapshotPolicy.wireframes.filter(w => w.url).slice(0, 6).map(wf => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img key={wf.id} src={wf.url!} alt={wf.name}
+                        className="h-48 w-auto flex-shrink-0 rounded-xl border border-zinc-200 object-contain" />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* 디스크립션 */}
+              {snapshotPolicy.description_groups.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-bold text-zinc-400">정책 / 디스크립션</p>
+                  <ul className="space-y-2">
+                    {snapshotPolicy.description_groups.map(g => (
+                      <li key={g.id} className="rounded-xl bg-zinc-50 px-4 py-2.5 text-sm text-zinc-700">
+                        <span className="mr-2 font-bold text-brand">{g.pinNumber}.</span>{g.title}
+                        {g.subItems.map(s => (
+                          <div key={s.pinNumber} className="ml-4 mt-1 text-xs text-zinc-400">{s.pinNumber}. {s.text}</div>
+                        ))}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── 저장/발행 모달 ── */}
       {showSaveModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm px-4"

@@ -159,7 +159,7 @@ export function ProductTabs({ products, currentUserName, canEdit }: ProductTabsP
       <div className="flex flex-1 gap-3 overflow-hidden bg-surface p-3">
         {/* 위키 탭 활성 시 WikiView 렌더링 (기존 레이아웃 완전 보존) */}
         {isWiki ? (
-          <WikiView canEdit={canEdit} currentUserName={currentUserName} />
+          <WikiView canEdit={canEdit} currentUserName={currentUserName} products={products} />
         ) : sidebarItems.length === 0 ? (
           <main className="flex flex-1 items-center justify-center rounded-3xl bg-white text-ink-muted">
             아직 등록된 기능 메뉴가 없습니다.

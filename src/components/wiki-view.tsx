@@ -2,6 +2,11 @@
 
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import type { WikiMenu, WikiDoc, Block, BlockType } from "@/types/wiki";
+import { parseFigmaTree } from "@/utils/figmaParser";
+
+type WFeature = { id: string; name: string; status: string };
+type WCategory = { id: string; name: string; features: WFeature[] };
+type WProduct = { slug: string; name: string; categories: WCategory[] };
 
 // ── 슬래시 커맨드 목록 ────────────────────────────────────────────────────────
 
@@ -45,9 +50,11 @@ const BLOCK_TEXT_CLS: Partial<Record<BlockType, string>> = {
 export function WikiView({
   canEdit,
   currentUserName,
+  products = [],
 }: {
   canEdit: boolean;
   currentUserName: string;
+  products?: WProduct[];
 }) {
   // 메뉴 상태
   const [menus, setMenus] = useState<WikiMenu[]>([]);
@@ -67,6 +74,15 @@ export function WikiView({
   // 슬래시 커맨드 상태
   const [slashState, setSlashState] = useState<{ blockId: string; search: string } | null>(null);
   const blockRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+
+  // 피그마 가져오기 상태
+  const [showFigmaModal, setShowFigmaModal] = useState(false);
+  const [figmaUrl, setFigmaUrl] = useState("");
+  const [figmaImporting, setFigmaImporting] = useState(false);
+  const [figmaError, setFigmaError] = useState<string | null>(null);
+
+  // POS 동기화 상태
+  const [syncing, setSyncing] = useState(false);
 
   // 메뉴 인라인 편집 상태
   const [editingMenuId, setEditingMenuId] = useState<string | null>(null);
@@ -222,6 +238,103 @@ export function WikiView({
     }));
   }
 
+  // ── 피그마에서 가져오기 ────────────────────────────────────────────────────
+  async function handleFigmaImport() {
+    if (!figmaUrl.trim()) return;
+    setFigmaImporting(true); setFigmaError(null);
+    try {
+      const res = await fetch("/api/figma-parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: figmaUrl }),
+      });
+      if (!res.ok) {
+        const { error } = await res.json().catch(() => ({})) as { error?: string };
+        setFigmaError(error ?? "피그마 가져오기 실패"); return;
+      }
+      const { rawNode } = await res.json() as { rawNode: import("@/utils/figmaParser").FigmaNode };
+      const parsed = parseFigmaTree(rawNode);
+
+      const newBlocks: Block[] = [];
+      if (parsed.hasSections && parsed.sections.length > 0) {
+        for (const section of parsed.sections) {
+          newBlocks.push({ id: crypto.randomUUID(), type: "h2", content: section.sectionTitle });
+          for (const group of section.descriptionGroups) {
+            newBlocks.push({ id: crypto.randomUUID(), type: "bullet", content: group.title });
+            for (const sub of group.subItems) {
+              newBlocks.push({ id: crypto.randomUUID(), type: "paragraph", content: sub.text });
+            }
+          }
+          if (section.policyNote) {
+            newBlocks.push({ id: crypto.randomUUID(), type: "callout", content: `정책: ${section.policyNote}` });
+          }
+        }
+      } else {
+        for (const group of parsed.descriptionGroups) {
+          newBlocks.push({ id: crypto.randomUUID(), type: "bullet", content: group.title });
+          for (const sub of group.subItems) {
+            newBlocks.push({ id: crypto.randomUUID(), type: "paragraph", content: sub.text });
+          }
+        }
+        if (parsed.policyNote) {
+          newBlocks.push({ id: crypto.randomUUID(), type: "callout", content: parsed.policyNote });
+        }
+      }
+
+      if (parsed.wireframeName) setTitle(parsed.wireframeName);
+      if (newBlocks.length > 0) {
+        setBlocks(newBlocks); setIsDirty(true);
+        showToast("피그마 내용을 가져왔습니다. Ctrl+S로 저장하세요.");
+      } else {
+        showToast("가져올 텍스트 콘텐츠를 찾지 못했습니다.");
+      }
+      setShowFigmaModal(false); setFigmaUrl("");
+    } catch {
+      setFigmaError("피그마 가져오기 중 오류가 발생했습니다.");
+    } finally {
+      setFigmaImporting(false);
+    }
+  }
+
+  // ── 포스앱 메뉴 동기화 ────────────────────────────────────────────────────
+  async function handlePosSyncMenus() {
+    if (!products.length) { showToast("동기화할 포스앱 데이터가 없습니다."); return; }
+    if (!confirm("포스앱 메뉴 구조를 위키에 추가합니다. 이미 같은 이름의 메뉴가 있으면 건너뜁니다. 계속하시겠습니까?")) return;
+    setSyncing(true);
+    let added = 0;
+    try {
+      const existingTitles = new Set(menus.map(m => m.title));
+      for (const product of products) {
+        for (const category of product.categories) {
+          if (existingTitles.has(category.name)) continue;
+          const parentRes = await fetch("/api/wiki-menus", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title: category.name, parent_id: null, sort_order: menus.length + added }),
+          });
+          const { menu: parentMenu } = await parentRes.json() as { menu?: WikiMenu };
+          if (!parentMenu) continue;
+          setMenus(prev => [...prev, parentMenu]);
+          existingTitles.add(category.name);
+          added++;
+          for (let fi = 0; fi < category.features.length; fi++) {
+            const feat = category.features[fi];
+            const childRes = await fetch("/api/wiki-menus", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ title: feat.name, parent_id: parentMenu.id, sort_order: fi }),
+            });
+            const { menu: childMenu } = await childRes.json() as { menu?: WikiMenu };
+            if (childMenu) setMenus(prev => [...prev, childMenu]);
+          }
+        }
+      }
+      showToast(added > 0 ? `${added}개 메뉴를 동기화했습니다.` : "새로 추가할 메뉴가 없습니다.");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   // ── 블록 편집 ──────────────────────────────────────────────────────────────
   function updateBlock(id: string, patch: Partial<Block>) {
     setBlocks(prev => prev.map(b => b.id === id ? { ...b, ...patch } : b));
@@ -316,15 +429,30 @@ export function WikiView({
       <aside className="flex w-56 shrink-0 flex-col overflow-y-auto rounded-3xl bg-white px-3 py-5">
         <div className="mb-3 flex items-center justify-between px-2">
           <span className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">위키</span>
-          {canEdit && (
-            <button
-              onClick={() => { setAddingChildOf("__root__"); setAddingTitle(""); }}
-              className="rounded-full p-1 text-zinc-400 hover:bg-zinc-100 hover:text-brand transition-colors"
-              title="새 최상위 문서 추가"
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-            </button>
-          )}
+          <div className="flex items-center gap-1">
+            {canEdit && products.length > 0 && (
+              <button
+                onClick={handlePosSyncMenus}
+                disabled={syncing}
+                className="rounded-full p-1 text-zinc-400 hover:bg-zinc-100 hover:text-brand transition-colors disabled:opacity-40"
+                title="포스앱 메뉴 동기화"
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M11.5 4A5 5 0 0 0 2.5 7M2.5 10a5 5 0 0 0 9-3"/>
+                  <path d="M11.5 4v-2.5M2.5 10v2.5"/>
+                </svg>
+              </button>
+            )}
+            {canEdit && (
+              <button
+                onClick={() => { setAddingChildOf("__root__"); setAddingTitle(""); }}
+                className="rounded-full p-1 text-zinc-400 hover:bg-zinc-100 hover:text-brand transition-colors"
+                title="새 최상위 문서 추가"
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+              </button>
+            )}
+          </div>
         </div>
 
         {menusLoading ? (
@@ -507,7 +635,16 @@ export function WikiView({
                     <span>작성자: {doc.author_name}</span>
                   </>
                 )}
-                <div className="ml-auto">
+                <div className="ml-auto flex items-center gap-2">
+                  {canEdit && (
+                    <button
+                      onClick={() => { setShowFigmaModal(true); setFigmaError(null); }}
+                      className="rounded-full px-3 py-1.5 text-xs font-bold text-zinc-400 hover:bg-zinc-100 hover:text-brand transition-colors"
+                      title="피그마에서 가져오기"
+                    >
+                      피그마에서 가져오기
+                    </button>
+                  )}
                   {canEdit && (
                     <button
                       onClick={handleSave}
@@ -628,6 +765,39 @@ export function WikiView({
           {toast && (
             <div className="pointer-events-none fixed bottom-8 left-1/2 z-50 -translate-x-1/2 rounded-full bg-zinc-900/90 px-5 py-2.5 text-sm font-medium text-white shadow-lg">
               {toast}
+            </div>
+          )}
+
+          {/* 피그마 가져오기 모달 */}
+          {showFigmaModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm px-4"
+              onClick={() => { setShowFigmaModal(false); setFigmaUrl(""); setFigmaError(null); }}>
+              <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl"
+                onClick={e => e.stopPropagation()}>
+                <h3 className="mb-1 text-lg font-bold text-ink">피그마에서 가져오기</h3>
+                <p className="mb-5 text-sm text-zinc-400">피그마 프레임 URL을 입력하면 디스크립션/정책 내용을 위키 블록으로 자동 변환합니다.</p>
+                <input
+                  autoFocus
+                  type="url"
+                  value={figmaUrl}
+                  onChange={e => setFigmaUrl(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") handleFigmaImport(); }}
+                  placeholder="https://www.figma.com/design/...?node-id=..."
+                  className="mb-4 w-full rounded-xl border border-zinc-200 px-4 py-3 text-sm outline-none focus:border-brand/40 focus:ring-2 focus:ring-brand/20"
+                />
+                {figmaError && <p className="mb-3 text-xs text-red-500">{figmaError}</p>}
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => { setShowFigmaModal(false); setFigmaUrl(""); setFigmaError(null); }}
+                    className="flex-1 rounded-xl border border-zinc-200 py-2.5 text-sm font-bold text-zinc-500 hover:bg-zinc-50 transition-colors">
+                    취소
+                  </button>
+                  <button type="button" onClick={handleFigmaImport}
+                    disabled={figmaImporting || !figmaUrl.trim()}
+                    className="flex-1 rounded-xl bg-brand py-2.5 text-sm font-bold text-white hover:bg-brand/90 disabled:opacity-40 transition-colors">
+                    {figmaImporting ? "가져오는 중..." : "가져오기"}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </main>
