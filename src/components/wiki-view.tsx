@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import type { WikiMenu, WikiDoc, Block, BlockType } from "@/types/wiki";
 import { parseFigmaTree } from "@/utils/figmaParser";
+import type { ParseResult } from "@/utils/figmaParser";
 
 type WFeature = { id: string; name: string; status: string };
 type WCategory = { id: string; name: string; features: WFeature[] };
@@ -45,6 +46,76 @@ const BLOCK_TEXT_CLS: Partial<Record<BlockType, string>> = {
   callout:   "text-sm text-ink leading-[1.8]",
 };
 
+// ── 피그마 파서 결과 → 원본 텍스트 변환 (AI 입력용) ──────────────────────────
+
+function buildRawTextFromParsed(parsed: ParseResult): string {
+  const lines: string[] = [];
+  if (parsed.hasSections && parsed.sections.length > 0) {
+    for (const section of parsed.sections) {
+      lines.push(`[${section.sectionTitle}]`);
+      for (const group of section.descriptionGroups) {
+        if (group.title) lines.push(group.title);
+        for (const sub of group.subItems) lines.push(`  - ${sub.text}`);
+      }
+      if (section.policyNote) lines.push(`★ ${section.policyNote}`);
+      if (section.uiNote) lines.push(`UI 참고: ${section.uiNote}`);
+      if (section.considerationNote) lines.push(`고려사항: ${section.considerationNote}`);
+    }
+  } else {
+    for (const group of parsed.descriptionGroups) {
+      if (group.title) lines.push(group.title);
+      for (const sub of group.subItems) lines.push(`  - ${sub.text}`);
+    }
+    if (parsed.policyNote) lines.push(`★ ${parsed.policyNote}`);
+    if (parsed.uiNote) lines.push(`UI 참고: ${parsed.uiNote}`);
+    if (parsed.considerationNote) lines.push(`고려사항: ${parsed.considerationNote}`);
+  }
+  return lines.filter(Boolean).join("\n");
+}
+
+// ── AI 실패 시 사용할 파서 기반 폴백 블록 생성 ──────────────────────────────
+
+function buildFallbackBlocks(parsed: ParseResult): Block[] {
+  const blocks: Block[] = [];
+  if (parsed.hasSections && parsed.sections.length > 0) {
+    for (const section of parsed.sections) {
+      blocks.push({ id: crypto.randomUUID(), type: "h2", content: section.sectionTitle });
+      for (const group of section.descriptionGroups) {
+        blocks.push({ id: crypto.randomUUID(), type: "bullet", content: group.title });
+        for (const sub of group.subItems) {
+          blocks.push({ id: crypto.randomUUID(), type: "paragraph", content: sub.text });
+        }
+      }
+      if (section.policyNote) {
+        blocks.push({ id: crypto.randomUUID(), type: "callout", content: `정책: ${section.policyNote}` });
+      }
+      if (section.uiNote) {
+        blocks.push({ id: crypto.randomUUID(), type: "callout", content: `UI 참고: ${section.uiNote}` });
+      }
+      if (section.considerationNote) {
+        blocks.push({ id: crypto.randomUUID(), type: "callout", content: `고려사항: ${section.considerationNote}` });
+      }
+    }
+  } else {
+    for (const group of parsed.descriptionGroups) {
+      blocks.push({ id: crypto.randomUUID(), type: "bullet", content: group.title });
+      for (const sub of group.subItems) {
+        blocks.push({ id: crypto.randomUUID(), type: "paragraph", content: sub.text });
+      }
+    }
+    if (parsed.policyNote) {
+      blocks.push({ id: crypto.randomUUID(), type: "callout", content: parsed.policyNote });
+    }
+    if (parsed.uiNote) {
+      blocks.push({ id: crypto.randomUUID(), type: "callout", content: `UI 참고: ${parsed.uiNote}` });
+    }
+    if (parsed.considerationNote) {
+      blocks.push({ id: crypto.randomUUID(), type: "callout", content: `고려사항: ${parsed.considerationNote}` });
+    }
+  }
+  return blocks;
+}
+
 // ── WikiView ──────────────────────────────────────────────────────────────────
 
 export function WikiView({
@@ -81,6 +152,7 @@ export function WikiView({
   const [figmaUrl, setFigmaUrl] = useState("");
   const [savedFigmaUrl, setSavedFigmaUrl] = useState<string | null>(null);
   const [figmaImporting, setFigmaImporting] = useState(false);
+  const [aiStructuring, setAiStructuring] = useState(false);
   const [figmaError, setFigmaError] = useState<string | null>(null);
 
   // POS 동기화 상태
@@ -117,10 +189,11 @@ export function WikiView({
         if (d.doc) {
           initDoc(d.doc);
         } else {
+          const menuTitleForDoc = menus.find(m => m.id === selectedMenuId)?.title;
           const res = await fetch("/api/wiki-docs", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ menuId: selectedMenuId, authorName: currentUserName }),
+            body: JSON.stringify({ menuId: selectedMenuId, authorName: currentUserName, title: menuTitleForDoc }),
           });
           const nd = await res.json();
           if (nd.doc) initDoc(nd.doc);
@@ -131,13 +204,16 @@ export function WikiView({
 
   function initDoc(d: WikiDoc) {
     setDoc(d);
-    setTitle(d.title);
     setSavedFigmaUrl(d.figma_url ?? null);
+    // LNB 메뉴명 우선: 기본값("제목 없음")인 경우 LNB 메뉴명으로 대체
+    const menuTitle = menus.find(m => m.id === selectedMenuId)?.title;
+    const displayTitle = (d.title === "제목 없음" && menuTitle) ? menuTitle : d.title;
+    setTitle(displayTitle);
     const init: Block[] = d.blocks.length > 0
       ? d.blocks
       : [{ id: crypto.randomUUID(), type: "paragraph", content: "" }];
     setBlocks(init);
-    cleanSnap.current = JSON.stringify({ t: d.title, b: init });
+    cleanSnap.current = JSON.stringify({ t: displayTitle, b: init });
     setIsDirty(false);
   }
 
@@ -280,38 +356,45 @@ export function WikiView({
       // overrideUrl로 호출된 경우 내부 figmaUrl 상태도 동기화
       if (overrideUrl) setFigmaUrl(overrideUrl);
 
-      const newBlocks: Block[] = [];
-      if (parsed.hasSections && parsed.sections.length > 0) {
-        for (const section of parsed.sections) {
-          newBlocks.push({ id: crypto.randomUUID(), type: "h2", content: section.sectionTitle });
-          for (const group of section.descriptionGroups) {
-            newBlocks.push({ id: crypto.randomUUID(), type: "bullet", content: group.title });
-            for (const sub of group.subItems) {
-              newBlocks.push({ id: crypto.randomUUID(), type: "paragraph", content: sub.text });
+      // ── 파서 기반 폴백 블록 생성 (AI 실패 시 사용) ────────────────────────────
+      const fallbackBlocks: Block[] = buildFallbackBlocks(parsed);
+
+      // ── AI 구조화 요약 엔진 호출 ─────────────────────────────────────────────
+      const rawText = buildRawTextFromParsed(parsed);
+      const menuTitle = menus.find(m => m.id === selectedMenuId)?.title ?? parsed.wireframeName ?? "";
+      let finalBlocks: Block[] = fallbackBlocks;
+
+      if (rawText.trim() && fallbackBlocks.length > 0) {
+        setAiStructuring(true);
+        try {
+          const aiRes = await fetch("/api/wiki-ai-structure", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rawText, menuTitle }),
+          });
+          if (aiRes.ok) {
+            const { blocks: aiBlocks } = await aiRes.json() as { blocks: { type: string; content: string }[] };
+            if (Array.isArray(aiBlocks) && aiBlocks.length > 0) {
+              finalBlocks = aiBlocks.map(b => ({
+                id: crypto.randomUUID(),
+                type: b.type as BlockType,
+                content: b.content ?? "",
+              }));
             }
           }
-          if (section.policyNote) {
-            newBlocks.push({ id: crypto.randomUUID(), type: "callout", content: `정책: ${section.policyNote}` });
-          }
-        }
-      } else {
-        for (const group of parsed.descriptionGroups) {
-          newBlocks.push({ id: crypto.randomUUID(), type: "bullet", content: group.title });
-          for (const sub of group.subItems) {
-            newBlocks.push({ id: crypto.randomUUID(), type: "paragraph", content: sub.text });
-          }
-        }
-        if (parsed.policyNote) {
-          newBlocks.push({ id: crypto.randomUUID(), type: "callout", content: parsed.policyNote });
+        } catch {
+          // AI 실패 시 파서 폴백 블록 사용
+        } finally {
+          setAiStructuring(false);
         }
       }
 
-      const newTitle = parsed.wireframeName || title;
-      if (parsed.wireframeName) setTitle(newTitle);
+      const newTitle = parsed.wireframeName || menuTitle || title;
+      if (parsed.wireframeName || menuTitle) setTitle(newTitle);
       const importedUrl = (overrideUrl ?? figmaUrl).trim();
       setShowFigmaModal(false); setFigmaUrl("");
-      if (newBlocks.length > 0) {
-        setBlocks(newBlocks); setIsDirty(true);
+      if (finalBlocks.length > 0) {
+        setBlocks(finalBlocks); setIsDirty(true);
         setSavedFigmaUrl(importedUrl);
         // 상태 업데이트 전에 computed 값으로 직접 저장
         if (doc) {
@@ -320,7 +403,7 @@ export function WikiView({
             const saveRes = await fetch(`/api/wiki-docs/${doc.id}`, {
               method: "PUT",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ title: newTitle, blocks: newBlocks, authorName: currentUserName, figmaUrl: importedUrl }),
+              body: JSON.stringify({ title: newTitle, blocks: finalBlocks, authorName: currentUserName, figmaUrl: importedUrl }),
             });
             if (saveRes.ok) {
               const { doc: updated } = await saveRes.json();
@@ -333,7 +416,7 @@ export function WikiView({
             setSaving(false);
           }
         }
-        showToast("피그마 내용을 가져왔습니다.");
+        showToast("AI가 피그마 내용을 구조화했습니다.");
       } else {
         showToast("가져올 텍스트 콘텐츠를 찾지 못했습니다.");
       }
@@ -733,11 +816,11 @@ export function WikiView({
                     <>
                       <button
                         onClick={() => handleFigmaImport(savedFigmaUrl)}
-                        disabled={figmaImporting}
+                        disabled={figmaImporting || aiStructuring}
                         className="rounded-full px-3 py-1.5 text-xs font-bold text-zinc-400 hover:bg-zinc-100 hover:text-brand transition-colors disabled:opacity-40"
                         title="저장된 피그마 URL로 다시 가져오기"
                       >
-                        {figmaImporting ? "가져오는 중..." : "🔄 다시 가져오기"}
+                        {aiStructuring ? "AI 구조화 중..." : figmaImporting ? "가져오는 중..." : "🔄 다시 가져오기"}
                       </button>
                       <a
                         href={savedFigmaUrl}
@@ -906,9 +989,9 @@ export function WikiView({
                     취소
                   </button>
                   <button type="button" onClick={() => handleFigmaImport()}
-                    disabled={figmaImporting || !figmaUrl.trim()}
+                    disabled={figmaImporting || aiStructuring || !figmaUrl.trim()}
                     className="flex-1 rounded-xl bg-brand py-2.5 text-sm font-bold text-white hover:bg-brand/90 disabled:opacity-40 transition-colors">
-                    {figmaImporting ? "가져오는 중..." : "가져오기"}
+                    {aiStructuring ? "AI 구조화 중..." : figmaImporting ? "가져오는 중..." : "가져오기"}
                   </button>
                 </div>
               </div>

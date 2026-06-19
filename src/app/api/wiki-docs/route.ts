@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { menuId, authorName } = await req.json() as { menuId: string; authorName?: string };
+  const { menuId, authorName, title } = await req.json() as { menuId: string; authorName?: string; title?: string };
   if (!menuId) return NextResponse.json({ error: "menuId required" }, { status: 400 });
 
   const admin = createAdminClient();
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     .from("wiki_docs")
     .insert({
       menu_id: menuId,
-      title: "제목 없음",
+      title: title?.trim() || "제목 없음",
       blocks: [],
       author_name: authorName ?? null,
       version_major: 0,
