@@ -499,6 +499,30 @@ export function WikiView({
     return () => window.removeEventListener("keydown", onCrossBlockDelete, true);
   });
 
+  // ── Ctrl+A → 전체 블록 일괄 선택 ────────────────────────────────────────
+  useEffect(() => {
+    function onSelectAll(e: KeyboardEvent) {
+      if (!(e.ctrlKey || e.metaKey) || e.key !== "a") return;
+      const area = document.querySelector("[data-wiki-blocks]");
+      if (!area || !area.contains(document.activeElement)) return;
+      const blockEls = Array.from(area.querySelectorAll("[data-block-id]")) as HTMLElement[];
+      if (blockEls.length === 0) return;
+      e.preventDefault();
+      try {
+        const first = blockEls[0];
+        const last  = blockEls[blockEls.length - 1];
+        const range = document.createRange();
+        range.setStart(first, 0);
+        range.setEnd(last, last.childNodes.length);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      } catch { /* 선택 실패 시 무시 */ }
+    }
+    window.addEventListener("keydown", onSelectAll, true);
+    return () => window.removeEventListener("keydown", onSelectAll, true);
+  });
+
   // ── 메뉴 CRUD ──────────────────────────────────────────────────────────────
   async function addMenu(parentId: string | null, t: string) {
     if (!t.trim()) return;
